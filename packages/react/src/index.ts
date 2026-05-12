@@ -1,4 +1,5 @@
 export { Companion, type CompanionProps } from './Companion.js';
+export type { CompanionRuntime } from '@web-companion/sdk';
 export {
   CompanionProvider,
   useCompanion,

@@ -1,0 +1,26 @@
+{
+  "name": "@web-companion/webmcp",
+  "version": "0.1.0",
+  "description": "Adapter that exposes a web-companion runtime's tools and resources via the W3C WebMCP API (navigator.modelContext). Lets AI agents in WebMCP-capable browsers (Chrome 146+) discover and invoke web-companion capabilities natively, while preserving the visible-cursor / real-DOM-event fidelity.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@web-companion/sdk": "workspace:^",
+    "@web-companion/spec": "workspace:^"
+  }
+}

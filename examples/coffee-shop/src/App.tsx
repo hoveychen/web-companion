@@ -1,5 +1,11 @@
-import { useMemo, type CSSProperties } from 'react';
-import { Companion, createAnthropicDecider, type DeciderFn } from '@web-companion/react';
+import { useCallback, useMemo, type CSSProperties } from 'react';
+import {
+  Companion,
+  createAnthropicDecider,
+  type CompanionRuntime,
+  type DeciderFn,
+} from '@web-companion/react';
+import { registerCompanionWithWebMCP } from '@web-companion/webmcp';
 import { cartStore, useCart, MENU } from './cart-store.js';
 
 export function App() {
@@ -13,6 +19,18 @@ export function App() {
       systemPromptHint:
         '这是一家咖啡店。用户可能用中文说话——把「拿铁/摩卡/美式/卡布奇诺」映射到 enum 值 latte/mocha/americano/cappuccino。',
     });
+  }, []);
+
+  const handleRuntimeReady = useCallback((runtime: CompanionRuntime) => {
+    if (import.meta.env.VITE_USE_WEBMCP !== '1') return;
+    const result = registerCompanionWithWebMCP(runtime, {
+      onUnsupported: (info) => {
+        console.warn('[web-companion] WebMCP host not available:', info.reason);
+      },
+    });
+    if (result.registered) {
+      console.info('[web-companion] WebMCP tools registered:', result.toolNames);
+    }
   }, []);
 
   const total = items.reduce((sum, i) => sum + i.price, 0);
@@ -110,7 +128,10 @@ export function App() {
         </aside>
       </main>
 
-      <Companion {...(decider ? { decider } : {})} />
+      <Companion
+        onRuntimeReady={handleRuntimeReady}
+        {...(decider ? { decider } : {})}
+      />
     </div>
   );
 }

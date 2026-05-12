@@ -26,12 +26,15 @@ const CompanionContext = createContext<CompanionContextValue>({
 export interface CompanionProviderProps {
   specUrl?: string;
   cursorOptions?: CursorOptions;
+  /** Fired once after the runtime finishes loading the spec. Use this to bridge into other systems (e.g. register tools with WebMCP). */
+  onRuntimeReady?: (runtime: CompanionRuntime) => void;
   children: ReactNode;
 }
 
 export function CompanionProvider({
   specUrl,
   cursorOptions,
+  onRuntimeReady,
   children,
 }: CompanionProviderProps) {
   const [runtime, setRuntime] = useState<CompanionRuntime | null>(null);
@@ -51,6 +54,7 @@ export function CompanionProvider({
         if (cancelled) return;
         setRuntime(rt);
         setLoading(false);
+        onRuntimeReady?.(rt);
       })
       .catch((err: Error) => {
         if (cancelled) return;
@@ -62,7 +66,7 @@ export function CompanionProvider({
       cancelled = true;
       opts.cursor.unmount();
     };
-  }, [specUrl, cursorOptions]);
+  }, [specUrl, cursorOptions, onRuntimeReady]);
 
   return (
     <CompanionContext.Provider value={{ runtime, error, loading }}>

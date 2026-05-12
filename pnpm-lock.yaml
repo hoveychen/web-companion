@@ -17,6 +17,9 @@ importers:
       '@web-companion/react':
         specifier: workspace:^
         version: link:../../packages/react
+      '@web-companion/webmcp':
+        specifier: workspace:^
+        version: link:../../packages/webmcp
       react:
         specifier: ^19.0.0
         version: 19.2.6
@@ -73,6 +76,15 @@ importers:
       zod:
         specifier: ^3.23.0
         version: 3.25.76
+
+  packages/webmcp:
+    dependencies:
+      '@web-companion/sdk':
+        specifier: workspace:^
+        version: link:../sdk
+      '@web-companion/spec':
+        specifier: workspace:^
+        version: link:../spec
 
 packages:
 

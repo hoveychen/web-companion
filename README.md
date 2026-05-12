@@ -187,6 +187,36 @@ export function App() {
 
 Set `VITE_ANTHROPIC_API_KEY` in `.env.local` for local dev. Uses `claude-opus-4-7` with prompt caching on the tool catalog. Note: the key is inlined in the client bundle — fine for demos, but use a backend proxy in production.
 
+## Use from WebMCP (Chrome 146+)
+
+[WebMCP](https://webmachinelearning.github.io/webmcp/) is the W3C draft API (`navigator.modelContext`) that lets browser-side AI agents discover tools registered by the page. The `@web-companion/webmcp` adapter compiles every `companion.json` tool/resource into a WebMCP `registerTool` call — execution still runs through the DSL, so the cursor still flies and the user's `onClick` still fires.
+
+```tsx
+import { Companion, type CompanionRuntime } from '@web-companion/react';
+import { registerCompanionWithWebMCP } from '@web-companion/webmcp';
+
+function handleRuntimeReady(runtime: CompanionRuntime) {
+  registerCompanionWithWebMCP(runtime, {
+    onUnsupported: (info) => console.warn('WebMCP unavailable:', info.reason),
+  });
+}
+
+export function App() {
+  return <Companion onRuntimeReady={handleRuntimeReady} />;
+}
+```
+
+What you get when an agent invokes `add_to_cart({id:'mocha'})` via WebMCP:
+
+1. Adapter receives the call from the browser's WebMCP host.
+2. `runtime.invokeTool` runs the DSL steps — cursor flies, target is highlighted, real `MouseEvent('click')` is dispatched on `[data-ai-tool='add-cart-mocha']`.
+3. The button's existing `onClick` fires; React state updates as it would for a user.
+4. WebMCP returns `{ ok: true, stepCount: 1 }` to the agent.
+
+Resources are surfaced as read-only tools named `read_<name>`. The adapter probes `navigator.modelContext` first, falls back to `navigator.modelContextTesting`, and silently no-ops in non-WebMCP browsers — safe to call unconditionally.
+
+To try it: install Chrome Canary 146.0.7672.0+, enable `chrome://flags` → "WebMCP for testing", and open any page that calls `registerCompanionWithWebMCP`. Chrome's built-in WebMCP panel (DevTools → Application → WebMCP) lists the registered tools; to invoke from devtools install the [WebMCP DevTools](https://chromewebstore.google.com/detail/webmcp-devtools/cgfogfkcfjdgpekdndcihajfjkaekjcl) extension, or run `await navigator.modelContextTesting.executeTool('add_to_cart', JSON.stringify({id:'mocha'}))` from the console.
+
 ## Spec reference
 
 ```ts
@@ -255,6 +285,7 @@ packages/
   spec/    @web-companion/spec    Zod schema + TS types + parser/validator
   sdk/     @web-companion/sdk     runtime: registry, dsl-executor, dom-extractor, cursor, target waiter
   react/   @web-companion/react   <Companion>, sidebar, keyword-stub + Anthropic deciders
+  webmcp/  @web-companion/webmcp  W3C WebMCP adapter — registers DSL tools/resources via navigator.modelContext
 examples/
   coffee-shop/                    vite 6 + react 19 demo + Playwright e2e
 ```
@@ -271,6 +302,7 @@ Build chain: `spec → sdk → react → examples/*`. After modifying any packag
 | React 19 `<Companion>` + pluggable decider | ✅ |
 | Anthropic Opus 4.7 decider with prompt caching | ✅ |
 | Playwright e2e (4/4) covering cursor flight, DOM dispatch, extraction | ✅ |
+| W3C WebMCP adapter (`navigator.modelContext` register, validated in Chrome 146 Canary) | ✅ |
 | MCP server adapter (use the same spec from Claude Desktop / Cursor) | planned v0.2 |
 | Headless CLI driver | planned v0.2 |
 | Standalone `companion.schema.json` for editor autocomplete | planned v0.2 |
