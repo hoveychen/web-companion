@@ -26,6 +26,8 @@ export {
 export {
   VisibleCursor,
   type CursorOptions,
+  type CursorRenderContext,
+  type CursorRenderResult,
 } from './cursor.js';
 export {
   highlightElement,
