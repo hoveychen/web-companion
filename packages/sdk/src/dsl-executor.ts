@@ -24,7 +24,7 @@ export async function executeSteps(
   for (let index = 0; index < steps.length; index++) {
     const raw = steps[index];
     if (!raw) continue;
-    const step = interpolateStep(raw, params);
+    const step = interpolateStep(raw, params, index);
     const timeoutMs =
       step.type === 'wait_for'
         ? (step.timeoutMs ?? WAIT_FOR_DEFAULT_TIMEOUT)
@@ -47,18 +47,31 @@ export async function executeSteps(
   }
 }
 
-function interpolateStep(step: Step, params: Record<string, unknown>): Step {
-  const target = interpolateString(step.target, params);
+function interpolateStep(
+  step: Step,
+  params: Record<string, unknown>,
+  index: number,
+): Step {
+  const ctx = { type: step.type, index };
+  const target = interpolateString(step.target, params, ctx);
   if (step.type === 'fill' || step.type === 'select') {
-    return { ...step, target, value: interpolateString(step.value, params) };
+    return { ...step, target, value: interpolateString(step.value, params, ctx) };
   }
   return { ...step, target };
 }
 
-function interpolateString(template: string, params: Record<string, unknown>): string {
+function interpolateString(
+  template: string,
+  params: Record<string, unknown>,
+  ctx: { type: string; index: number },
+): string {
   return template.replace(/\{(\w+)\}/g, (_, key: string) => {
     const v = params[key];
-    if (v === undefined || v === null) return `{${key}}`;
+    if (v === undefined || v === null) {
+      throw new Error(
+        `step ${ctx.index} (${ctx.type}): missing param "${key}" for template "${template}"`,
+      );
+    }
     return String(v);
   });
 }

@@ -56,6 +56,33 @@ test.describe('Coffee shop · Companion demo end-to-end', () => {
     await expect(result).toContainText('拿铁');
   });
 
+  test('QuickActions: add_to_cart chip expands into one sub-chip per enum SKU', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('text=ready')).toBeVisible({ timeout: 10_000 });
+
+    const subChip = page.locator('button', { hasText: 'add_to_cart · mocha' });
+    await expect(subChip).toBeVisible();
+    await subChip.click();
+
+    const cartRegion = page.locator('aside').filter({ hasText: '购物车' });
+    await expect(cartRegion.getByText('摩卡', { exact: true })).toBeVisible({ timeout: 5_000 });
+  });
+
+  test('missing required param: executor aborts with friendly error, no selector leak', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('text=ready')).toBeVisible({ timeout: 10_000 });
+
+    const input = page.locator('input[placeholder="tell Companion what to do"]');
+    await input.fill('add_to_cart');
+    await input.press('Enter');
+
+    const missingParamErr = page.locator('text=/missing param "id"/');
+    await expect(missingParamErr).toBeVisible({ timeout: 5_000 });
+
+    const timeoutErr = page.locator('text=/not found within 1500ms/');
+    await expect(timeoutErr).toHaveCount(0);
+  });
+
   test('checkout flies cursor to checkout button and empties cart', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('text=ready')).toBeVisible({ timeout: 10_000 });

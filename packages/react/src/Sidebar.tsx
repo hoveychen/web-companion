@@ -118,9 +118,9 @@ export function CompanionSidebar({
 
         {runtime && transcript.length === 0 && (
           <QuickActions
-            tools={runtime.listTools().map((t) => t.name)}
-            resources={runtime.listResources().map((r) => r.name)}
-            onPick={(name) => handleSend(name)}
+            toolChips={runtime.listTools().flatMap(expandToolChips)}
+            resources={runtime.listResources().map((r) => ({ label: r.name, command: r.name }))}
+            onPick={(command) => handleSend(command)}
           />
         )}
 
@@ -157,20 +157,25 @@ export function CompanionSidebar({
   );
 }
 
+interface Chip {
+  label: string;
+  command: string;
+}
+
 function QuickActions({
-  tools,
+  toolChips,
   resources,
   onPick,
 }: {
-  tools: string[];
-  resources: string[];
-  onPick: (name: string) => void;
+  toolChips: Chip[];
+  resources: Chip[];
+  onPick: (command: string) => void;
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <Hint text="试试输入一句话，或点下面的快捷动作 ↓" />
-      {tools.length > 0 && (
-        <ChipRow label="tools" items={tools} onPick={onPick} accent="indigo" />
+      {toolChips.length > 0 && (
+        <ChipRow label="tools" items={toolChips} onPick={onPick} accent="indigo" />
       )}
       {resources.length > 0 && (
         <ChipRow label="resources" items={resources} onPick={onPick} accent="emerald" />
@@ -186,8 +191,8 @@ function ChipRow({
   accent,
 }: {
   label: string;
-  items: string[];
-  onPick: (name: string) => void;
+  items: Chip[];
+  onPick: (command: string) => void;
   accent: 'indigo' | 'emerald';
 }) {
   const color = accent === 'indigo' ? 'rgb(99 102 241)' : 'rgb(16 185 129)';
@@ -195,11 +200,11 @@ function ChipRow({
     <div>
       <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 6 }}>{label}</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        {items.map((name) => (
+        {items.map((chip) => (
           <button
-            key={name}
+            key={chip.label}
             type="button"
-            onClick={() => onPick(name)}
+            onClick={() => onPick(chip.command)}
             style={{
               background: 'transparent',
               border: `1px solid ${color}`,
@@ -211,12 +216,40 @@ function ChipRow({
               fontFamily: 'inherit',
             }}
           >
-            {name}
+            {chip.label}
           </button>
         ))}
       </div>
     </div>
   );
+}
+
+/**
+ * If a tool's required params include exactly one string-enum field, expand it
+ * into one chip per enum value so the rule-based decider can extract the param
+ * from the chip's command. Otherwise return a single chip with just the name.
+ */
+function expandToolChips(tool: ToolSpec): Chip[] {
+  const single: Chip = { label: tool.name, command: tool.name };
+  const p = tool.params;
+  if (!p || typeof p !== 'object' || !('type' in p) || p.type !== 'object') {
+    return [single];
+  }
+  const required: string[] = Array.isArray(p.required) ? p.required : [];
+  const properties = p.properties as Record<string, unknown>;
+  const enumKeys = required.filter((k: string) => {
+    const sub = properties[k];
+    if (!sub || typeof sub !== 'object' || !('type' in sub) || (sub as { type?: unknown }).type !== 'string') return false;
+    const values = (sub as { enum?: unknown }).enum;
+    return Array.isArray(values) && values.length > 0;
+  });
+  if (enumKeys.length !== 1) return [single];
+  const key = enumKeys[0]!;
+  const values = (properties[key] as { enum: string[] }).enum;
+  return values.map((v) => ({
+    label: `${tool.name} · ${v}`,
+    command: `${tool.name} ${v}`,
+  }));
 }
 
 function TranscriptRow({ entry }: { entry: TranscriptEntry }) {
