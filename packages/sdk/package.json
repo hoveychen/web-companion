@@ -1,0 +1,26 @@
+{
+  "name": "@web-companion/sdk",
+  "version": "0.1.0",
+  "description": "Core runtime — fetches a companion.json spec, registers tools and resources, dynamically loads handler modules, and resolves DOM targets. The visible cursor layer also lives here (added in P4).",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@web-companion/spec": "workspace:^",
+    "motion": "^12.38.0"
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "version": "0.1",
+  "tools": [
+    {
+      "name": "add_to_cart",
+      "description": "把一杯咖啡加入购物车。参数 id 是咖啡 SKU，可选 latte / mocha / americano / cappuccino。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "咖啡 SKU，比如 latte, mocha, americano, cappuccino",
+            "enum": ["latte", "mocha", "americano", "cappuccino"]
+          }
+        },
+        "required": ["id"]
+      },
+      "target": "[data-ai-tool='add-cart-{id}']",
+      "handler": "/actions/companion.js#addToCart"
+    },
+    {
+      "name": "remove_from_cart",
+      "description": "把购物车里的某杯咖啡移除。参数 id 是要移除的咖啡 SKU。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "要移除的咖啡 SKU"
+          }
+        },
+        "required": ["id"]
+      },
+      "target": "[data-ai-tool='remove-cart-{id}']",
+      "handler": "/actions/companion.js#removeFromCart"
+    },
+    {
+      "name": "checkout",
+      "description": "结账，下单所有当前购物车里的咖啡。",
+      "target": "[data-ai-tool='checkout']",
+      "handler": "/actions/companion.js#checkout"
+    }
+  ],
+  "resources": [
+    {
+      "name": "cart",
+      "description": "当前购物车里的所有商品，包括 id、name、price。",
+      "schema": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "name": { "type": "string" },
+            "price": { "type": "number" }
+          }
+        }
+      },
+      "source": "/actions/companion.js#getCart"
+    },
+    {
+      "name": "menu",
+      "description": "咖啡店当前在售的菜单，包括所有咖啡的 id、名字、价格。",
+      "schema": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "name": { "type": "string" },
+            "price": { "type": "number" }
+          }
+        }
+      },
+      "source": "/actions/companion.js#getMenu"
+    }
+  ]
+}
