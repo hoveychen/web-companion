@@ -1,18 +1,64 @@
 # web-companion
 
-Turn a website into an AI-operable surface, declaratively. One JSON document at `/.well-known/companion.json` declares the page's tools (actions) and resources (readable data); the SDK gives you an in-page sidebar with a visible cursor that flies to whichever element it's about to click.
+A spec-first SDK that gives any website a built-in AI sidekick — a chat sidebar with a visible cursor that flies across the page to click, fill, and verify, just as the user would.
 
-This is the **v0 monorepo** — in-page sidebar + visible cursor + Anthropic-driven decisions are working end-to-end. MCP-server and CLI surfaces are designed for but not yet implemented (see Status below).
+The contract is a single JSON document at `/.well-known/companion.json` that declares:
 
-## Why
+- **tools** — UI action sequences expressed as `click` / `fill` / `select` / `check` / `wait_for` steps
+- **resources** — structured data the AI can read by extracting from the DOM
 
-Three properties that no single existing library gives you:
+The runtime dispatches real DOM events against the user's actual elements. The AI's `add_to_cart` ends up calling the same button's `onClick` your user would press — no parallel business code, no fidelity gap.
 
-1. **100% precision via declaration.** No DOM-scraping or vision inference — the developer states what's clickable and what's readable in a manifest. The AI calls those by name.
-2. **Visible cursor as a first-class UX.** Traditional users need to see what the AI is doing. The cursor literally flies across the page to the button before it's pressed.
-3. **One declaration, three exposure modes.** Same `companion.json` can drive (a) the in-page sidebar, (b) an MCP server for external agents, (c) a CLI — all without rewriting business logic.
+## Quickstart
 
-## Quick start
+Three steps for a React app.
+
+**1. Install:**
+
+```sh
+npm install @web-companion/react
+```
+
+**2. Mount the sidebar:**
+
+```tsx
+import { Companion } from '@web-companion/react';
+
+export function App() {
+  return (
+    <>
+      {/* your existing app */}
+      <Companion />
+    </>
+  );
+}
+```
+
+**3. Serve a spec at `/.well-known/companion.json`:**
+
+```jsonc
+{
+  "version": "0.1",
+  "tools": [
+    {
+      "name": "add_to_cart",
+      "description": "Add a product to the cart by id.",
+      "params": {
+        "type": "object",
+        "properties": { "id": { "type": "string" } },
+        "required": ["id"]
+      },
+      "steps": [
+        { "type": "click", "target": "[data-ai-tool='add-cart-{id}']" }
+      ]
+    }
+  ]
+}
+```
+
+Then sprinkle a `data-ai-tool="add-cart-mocha"` (etc.) on your existing buttons. No other business code changes — the cursor will fly to that button and dispatch a real click event; your existing `onClick` runs.
+
+To play with the bundled demo:
 
 ```sh
 pnpm install
@@ -21,108 +67,222 @@ pnpm --filter coffee-shop dev --host 127.0.0.1
 # open http://127.0.0.1:5173
 ```
 
-Try saying things like:
+## Write a tool
 
-- `add_to_cart mocha` — cursor flies to the 摩卡 card's "加入购物车" button, then adds it.
-- `cart` — reads the cart resource and renders the JSON in the sidebar.
-- `checkout` — cursor flies to the bottom-right "结账" button and clears the cart.
+A tool is a sequence of UI steps. Every `target`, `value`, and field selector can contain `{paramName}` placeholders that get interpolated from the tool's `params` at invocation time.
 
-To upgrade the decision-maker from the keyword-stub to Claude (Opus 4.7):
-
-```sh
-cp examples/coffee-shop/.env.example examples/coffee-shop/.env
-# fill in VITE_ANTHROPIC_API_KEY
-```
-
-After restart, natural-language prompts like "加一份摩卡" / "看看购物车" / "结账" work because Claude interprets the intent and picks the right tool.
-
-## The spec
-
-A page declares its AI-operable surface as a single JSON document, traditionally served at `/.well-known/companion.json`:
+### Single-step tool
 
 ```jsonc
 {
-  "version": "0.1",
-  "tools": [
-    {
-      "name": "add_to_cart",
-      "description": "把一杯咖啡加入购物车。",
-      "params": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "enum": ["latte", "mocha", "americano", "cappuccino"]
-          }
-        },
-        "required": ["id"]
-      },
-      "target": "[data-ai-tool='add-cart-{id}']",
-      "handler": "/actions/companion.js#addToCart"
-    }
-  ],
-  "resources": [
-    {
-      "name": "cart",
-      "description": "当前购物车里的所有商品。",
-      "schema": { "type": "array", "items": { /* ... */ } },
-      "source": "/actions/companion.js#getCart"
-    }
+  "name": "checkout",
+  "description": "Place the order.",
+  "steps": [
+    { "type": "click", "target": "[data-ai-tool='checkout']" }
   ]
 }
 ```
 
-Three rules:
+At invocation: cursor flies to the element matching `[data-ai-tool='checkout']`, plays a click ripple, and dispatches a `MouseEvent('click', { bubbles: true })`. Whatever React/Vue/vanilla `onClick` you have on that button runs.
 
-- **`target`** is a CSS selector — the visible cursor flies to whatever matches. `{paramName}` placeholders are interpolated from the tool's params at invocation time.
-- **`handler` / `source`** is a `path/to/file.js#exportedFn` reference. The SDK dynamically imports it and calls the named export. Path is resolved against the spec document's URL.
-- **Tools mutate, resources read.** They're the same shape as MCP's `tools` and `resources`, so a future MCP-server surface (P9 / v0.2) drops in.
+### Multi-step tool with a parameter and async wait
+
+```jsonc
+{
+  "name": "search",
+  "description": "Search the catalog.",
+  "params": {
+    "type": "object",
+    "properties": { "query": { "type": "string" } },
+    "required": ["query"]
+  },
+  "steps": [
+    { "type": "fill",     "target": "[data-ai='search-input']", "value": "{query}" },
+    { "type": "click",    "target": "[data-ai='search-submit']" },
+    { "type": "wait_for", "target": "[data-ai='results']", "timeoutMs": 3000 }
+  ]
+}
+```
+
+At invocation with `{ query: "mocha" }`: cursor visits the input (220ms dwell), the input gets the value via the native React-compatible setter so `onChange` fires; then the submit button (click ripple), real `MouseEvent('click')`; then the cursor parks on the results region as it appears.
+
+### What every step type does
+
+| Step | Effect on the target element |
+|---|---|
+| `click` | `dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))` |
+| `fill` | Native value setter + `dispatchEvent(new InputEvent('input'))` + `dispatchEvent(new Event('change'))` — needed to make React's controlled-input state sync |
+| `select` | `element.value = value` + `dispatchEvent(new Event('change'))` |
+| `check` | Toggle `checkbox.checked` (or set to `step.checked`) + `dispatchEvent(new Event('change'))` |
+| `wait_for` | Poll via `MutationObserver` until the selector matches, up to `timeoutMs` (default 3000) |
+
+Non-wait steps default to a 1500ms wait for their target to appear; they don't fail immediately on race conditions.
+
+### What you don't write
+
+No handler module, no Node-side function, no API endpoint. The step's effect is whatever your existing event handlers do. If the search submit button currently runs `fetch('/api/search', …)`, that's what runs when the AI triggers it.
+
+## Write a resource
+
+A resource is a DOM-extraction rule. The runtime queries elements and reads scalar fields off them. No JavaScript runs.
+
+```jsonc
+{
+  "name": "cart",
+  "description": "Current cart contents.",
+  "schema": {
+    "type": "array",
+    "items": {
+      "type": "object",
+      "properties": {
+        "id":    { "type": "string" },
+        "name":  { "type": "string" },
+        "price": { "type": "string" }
+      }
+    }
+  },
+  "extract": {
+    "type": "list",
+    "selector": "[data-ai='cart-item']",
+    "fields": {
+      "id":    { "from": "attr", "attr": "data-id" },
+      "name":  { "from": "text", "selector": "[data-ai='item-name']" },
+      "price": { "from": "text", "selector": "[data-ai='item-price']" }
+    }
+  }
+}
+```
+
+The runtime queries every `[data-ai='cart-item']` and, for each match, reads `id` from `data-id`, `name` from the descendant's text, etc. A `"type": "single"` extract returns one object instead of an array.
+
+`from` options:
+
+| from | What it reads |
+|---|---|
+| `text` | `element.textContent`, trimmed |
+| `attr` | `element.getAttribute(attr)` — `attr` is required |
+| `value` | `.value` from `<input>` / `<select>` / `<textarea>` |
+| `checked` | `.checked` from a checkbox/radio |
+
+`selector` on a field is optional — omit it to read the source from the item element itself.
+
+## Connect Claude
+
+By default the sidebar uses a keyword-matching stub to pick which tool to invoke from a user message. For real natural-language understanding:
+
+```tsx
+import { Companion, createAnthropicDecider } from '@web-companion/react';
+
+const decider = createAnthropicDecider({
+  apiKey: import.meta.env.VITE_ANTHROPIC_API_KEY,
+  // Optional: extra context appended to the system prompt
+  systemPromptHint:
+    'This is a coffee shop. Map Chinese names to enum values: 拿铁→latte, 摩卡→mocha, ...',
+});
+
+export function App() {
+  return <Companion decider={decider} />;
+}
+```
+
+Set `VITE_ANTHROPIC_API_KEY` in `.env.local` for local dev. Uses `claude-opus-4-7` with prompt caching on the tool catalog. Note: the key is inlined in the client bundle — fine for demos, but use a backend proxy in production.
+
+## Spec reference
+
+```ts
+type CompanionSpec = {
+  version: '0.1';
+  tools?: ToolSpec[];
+  resources?: ResourceSpec[];
+};
+
+type ToolSpec = {
+  name: string;
+  description: string;
+  params?: JsonSchema;
+  steps: Step[];                 // at least one
+};
+
+type Step =
+  | { type: 'click';    target: string }
+  | { type: 'fill';     target: string; value: string }
+  | { type: 'select';   target: string; value: string }
+  | { type: 'check';    target: string; checked?: boolean }
+  | { type: 'wait_for'; target: string; timeoutMs?: number };
+
+type ResourceSpec = {
+  name: string;
+  description: string;
+  schema: JsonSchema;            // shape of the returned data
+  extract: ExtractConfig;
+};
+
+type ExtractConfig =
+  | { type: 'single'; selector: string; fields: Record<string, FieldExtract> }
+  | { type: 'list';   selector: string; fields: Record<string, FieldExtract> };
+
+type FieldExtract =
+  | { from: 'text';    selector?: string }
+  | { from: 'attr';    selector?: string; attr: string }
+  | { from: 'value';   selector?: string }
+  | { from: 'checked'; selector?: string };
+```
+
+All `target`, `value`, and `selector` strings may contain `{paramName}` placeholders interpolated from the tool's `params` at invocation time.
+
+## Adapting an existing app
+
+The protocol is designed so that an AI agent — even one with limited context — can read a page's source, identify the interactive elements, and emit a `companion.json` *without writing business code*. Four properties make this safe:
+
+1. **No business logic in the spec.** The agent never references a JS function. It only points at DOM elements.
+2. **Selectors are plain CSS.** The agent uses whatever's already on the element (`aria-*`, `role`, classes, text content) or **adds a `data-ai-*` attribute as an anchor** when the existing markup is unstable.
+3. **Step semantics are explicit.** Every step is one of five known kinds. The agent can't smuggle in arbitrary code.
+4. **Fidelity is structural.** The runtime dispatches real DOM events on the user's actual elements; whatever the user's `onClick` does is what the AI triggers. Cursor演的=用户操作的。
+
+A typical pass over an existing React app:
+
+1. Identify interactive elements you want to expose (buttons, inputs, dropdowns).
+2. If their existing selectors aren't stable, add `data-ai-*` attributes — marker only, no logic change.
+3. Identify data the AI should be able to read (cart list, product info). Add `data-ai-*` markers to the wrapper element and the field-bearing children.
+4. Write `companion.json` referencing those markers.
+
+No state-management changes. No `onClick` rewrites. The agent is annotating, not refactoring.
 
 ## Packages
 
-| Package | Purpose |
-|---|---|
-| [`@web-companion/spec`](packages/spec) | Zod schema + TS types + `parseCompanionSpec` / `safeParseCompanionSpec` / `parseHandlerRef`. No runtime side effects — single source of truth for the wire format. |
-| [`@web-companion/sdk`](packages/sdk) | Runtime: `ActionRegistry`, spec loader, dynamic-import handler resolver, target resolver (`querySelector` + `waitForTarget`), and the `CompanionRuntime` orchestration layer with `onBeforeInvoke` / `onAfterInvoke` / `onInvokeError` hooks. Also ships the `VisibleCursor` (motion.dev SVG cursor + click ripple), `highlightElement` spotlight, and `attachCursor` adapter. |
-| [`@web-companion/react`](packages/react) | React bindings: `<Companion specUrl="..."/>` mounts everything in one line. Also `<CompanionProvider>` + `useCompanion` for advanced layouts, and `<CompanionSidebar>` for custom UIs. The decider is pluggable — defaults to a Chinese/English keyword-matching stub, optionally swapped for `createAnthropicDecider({apiKey})` for real LLM intent. |
-| [`examples/coffee-shop`](examples/coffee-shop) | Minimal Vite + React 19 demo: 4 coffees, a cart, and a checkout button. Companion exposes 3 tools and 2 resources. |
-
-## Status — what's done in v0
-
-- ✅ Spec format (`/.well-known/companion.json`)
-- ✅ In-page sidebar with chat-style transcript
-- ✅ Visible cursor: SVG circle + drop-shadow, framer-motion `easeOutQuint` flight, click ripple, drop-shadow, element spotlight
-- ✅ Tool target selector interpolation: `[data-ai-tool='add-cart-{id}']` resolves at invocation time
-- ✅ Rule-based decider stub (keyword scoring + enum-aware param extraction)
-- ✅ Claude (Opus 4.7) decider via `createAnthropicDecider` — uses tool_use, system prompt is cached
-- ✅ Playwright e2e test suite (4 specs, ~6s) verifying spec load, cursor mount, highlight-target alignment, tool execution, resource read, checkout cursor + cart empty
-
-## Roadmap
-
-- v0.2 — MCP-server adapter (`@web-companion/mcp`) so Claude Desktop / Cursor / claw-os can drive the page over MCP. Same spec file, no extra wiring.
-- v0.2 — CLI (`@web-companion/cli`) that drives a headless browser from the same spec.
-- v0.3 — Vue / Svelte / Vanilla framework adapters.
-- v0.3 — Standalone JSON Schema file (`companion.schema.json`) for editor autocomplete + external validation.
-
-## Project layout
-
 ```
 packages/
-  spec/        # protocol — schema + types
-  sdk/         # runtime — registry, loader, cursor, runtime
-  react/       # <Companion> + sidebar + deciders
+  spec/    @web-companion/spec    Zod schema + TS types + parser/validator
+  sdk/     @web-companion/sdk     runtime: registry, dsl-executor, dom-extractor, cursor, target waiter
+  react/   @web-companion/react   <Companion>, sidebar, keyword-stub + Anthropic deciders
 examples/
-  coffee-shop/ # demo app + Playwright e2e
+  coffee-shop/                    vite 6 + react 19 demo + Playwright e2e
 ```
+
+Build chain: `spec → sdk → react → examples/*`. After modifying any package, `pnpm -r build` before exercising the demo.
+
+## Status (v0.1)
+
+| | |
+|---|---|
+| DSL with 5 step types | ✅ |
+| DOM extraction (single + list) | ✅ |
+| Visible cursor with per-step animation (motion.dev) | ✅ |
+| React 19 `<Companion>` + pluggable decider | ✅ |
+| Anthropic Opus 4.7 decider with prompt caching | ✅ |
+| Playwright e2e (4/4) covering cursor flight, DOM dispatch, extraction | ✅ |
+| MCP server adapter (use the same spec from Claude Desktop / Cursor) | planned v0.2 |
+| Headless CLI driver | planned v0.2 |
+| Standalone `companion.schema.json` for editor autocomplete | planned v0.2 |
+| Vue / Svelte adapters | planned v0.3 |
+| Nested resource extraction | planned v0.3 |
 
 ## Development
 
 ```sh
 pnpm install
-pnpm -r build           # build all packages
-pnpm -r typecheck       # tsc --noEmit across the monorepo
+pnpm -r build
+pnpm -r typecheck
 pnpm --filter coffee-shop dev --host 127.0.0.1
 pnpm --filter coffee-shop test:e2e
 ```
-
-`TASKS.md` carries the v0 plan + per-task notes. The build chain is `spec → sdk → react → examples/*`; modifying a SDK package needs a `pnpm -r build` before the demo picks it up.

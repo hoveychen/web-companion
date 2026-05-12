@@ -6,14 +6,13 @@ export interface AttachCursorOutput extends CompanionRuntimeOptions {
   cursor: VisibleCursor;
 }
 
+const NON_CLICK_DWELL_MS = 220;
+const HIGHLIGHT_LINGER_MS = 350;
+
 /**
- * Wraps a CompanionRuntimeOptions so that, before each tool invocation, the visible
- * cursor flies to the tool's target element, briefly highlights it, plays a click
- * ripple, then yields to any onBeforeInvoke the caller already supplied.
- *
- * Typical use:
- *   const opts = attachCursor({ specUrl: '/.well-known/companion.json' });
- *   const runtime = new CompanionRuntime(opts);
+ * Wraps CompanionRuntimeOptions so the visible cursor flies to each DSL step's
+ * target before the step runs. Click/check steps play a click ripple; fill /
+ * select / wait_for show a brief dwell on the target.
  */
 export function attachCursor(
   baseOptions: CompanionRuntimeOptions = {},
@@ -22,21 +21,23 @@ export function attachCursor(
   const cursor = new VisibleCursor(cursorOptions);
   cursor.mount();
 
-  const originalBefore = baseOptions.onBeforeInvoke;
+  const originalBeforeStep = baseOptions.onBeforeStep;
 
   return {
     ...baseOptions,
     cursor,
-    onBeforeInvoke: async (event) => {
-      if (event.target) {
-        await cursor.flyToElement(event.target.element);
-        const hl = highlightElement(event.target.element);
+    onBeforeStep: async (ctx) => {
+      await cursor.flyToElement(ctx.target);
+      const hl = highlightElement(ctx.target);
+      if (ctx.step.type === 'click' || ctx.step.type === 'check') {
         await cursor.click();
-        setTimeout(() => {
-          void hl.dispose();
-        }, 350);
+      } else {
+        await new Promise<void>((r) => setTimeout(r, NON_CLICK_DWELL_MS));
       }
-      await originalBefore?.(event);
+      setTimeout(() => {
+        void hl.dispose();
+      }, HIGHLIGHT_LINGER_MS);
+      await originalBeforeStep?.(ctx);
     },
   };
 }

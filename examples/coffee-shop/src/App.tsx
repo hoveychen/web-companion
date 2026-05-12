@@ -1,18 +1,6 @@
-import { useEffect, useMemo, type CSSProperties } from 'react';
+import { useMemo, type CSSProperties } from 'react';
 import { Companion, createAnthropicDecider, type DeciderFn } from '@web-companion/react';
 import { cartStore, useCart, MENU } from './cart-store.js';
-
-declare global {
-  interface Window {
-    __cart?: {
-      addToCart: (p: { id: string }) => unknown;
-      removeFromCart: (p: { id: string }) => unknown;
-      checkout: () => unknown;
-      getCart: () => unknown;
-      getMenu: () => unknown;
-    };
-  }
-}
 
 export function App() {
   const items = useCart();
@@ -25,19 +13,6 @@ export function App() {
       systemPromptHint:
         '这是一家咖啡店。用户可能用中文说话——把「拿铁/摩卡/美式/卡布奇诺」映射到 enum 值 latte/mocha/americano/cappuccino。',
     });
-  }, []);
-
-  useEffect(() => {
-    window.__cart = {
-      addToCart: ({ id }) => cartStore.add(id),
-      removeFromCart: ({ id }) => cartStore.remove(id),
-      checkout: () => cartStore.checkout(),
-      getCart: () => cartStore.getItems(),
-      getMenu: () => MENU,
-    };
-    return () => {
-      delete window.__cart;
-    };
   }, []);
 
   const total = items.reduce((sum, i) => sum + i.price, 0);
@@ -56,10 +31,22 @@ export function App() {
           <h2 style={sectionTitle}>菜单</h2>
           <div style={menuGridStyle}>
             {MENU.map((item) => (
-              <article key={item.id} style={cardStyle}>
+              <article
+                key={item.id}
+                style={cardStyle}
+                data-ai="menu-item"
+                data-id={item.id}
+              >
                 <div style={{ fontSize: 48 }}>{item.emoji}</div>
-                <h3 style={{ margin: '8px 0 4px' }}>{item.name}</h3>
-                <div style={{ opacity: 0.6, fontSize: 13 }}>¥{item.price}</div>
+                <h3 style={{ margin: '8px 0 4px' }} data-ai="menu-name">
+                  {item.name}
+                </h3>
+                <div
+                  style={{ opacity: 0.6, fontSize: 13 }}
+                  data-ai="menu-price"
+                >
+                  ¥{item.price}
+                </div>
                 <button
                   type="button"
                   data-ai-tool={`add-cart-${item.id}`}
@@ -81,9 +68,17 @@ export function App() {
             <>
               <ul style={cartListStyle}>
                 {items.map((it) => (
-                  <li key={it.addedAt} style={cartRowStyle}>
-                    <span>{it.name}</span>
-                    <span style={{ marginLeft: 'auto', opacity: 0.6 }}>
+                  <li
+                    key={it.addedAt}
+                    style={cartRowStyle}
+                    data-ai="cart-item"
+                    data-id={it.id}
+                  >
+                    <span data-ai="item-name">{it.name}</span>
+                    <span
+                      style={{ marginLeft: 'auto', opacity: 0.6 }}
+                      data-ai="item-price"
+                    >
                       ¥{it.price}
                     </span>
                     <button

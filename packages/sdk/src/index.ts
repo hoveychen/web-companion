@@ -5,11 +5,11 @@ export {
   type LoadResult,
 } from './loader.js';
 export {
-  resolveHandler,
-  clearHandlerCache,
-  type HandlerFn,
-  type ResolveHandlerOptions,
-} from './handler-resolver.js';
+  executeSteps,
+  type DslExecutorOptions,
+  type StepContext,
+} from './dsl-executor.js';
+export { extractData } from './dom-extractor.js';
 export {
   resolveTarget,
   waitForTarget,
@@ -21,6 +21,7 @@ export {
   type BeforeInvokeEvent,
   type AfterInvokeEvent,
   type InvokeErrorEvent,
+  type ToolResult,
 } from './runtime.js';
 export {
   VisibleCursor,

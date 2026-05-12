@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+// --- JSON Schema subset (for params and resource schema) -------------------
+
 const jsonSchemaSchema: z.ZodType = z.lazy(() =>
   z.discriminatedUnion('type', [
     z.object({
@@ -24,26 +26,88 @@ const jsonSchemaSchema: z.ZodType = z.lazy(() =>
   ]),
 );
 
-const handlerRefSchema = z
-  .string()
-  .regex(
-    /^[^#]+#[A-Za-z_$][\w$]*$/,
-    'handler must look like "path/to/file.js#exportedFn"',
-  );
+// --- DSL: tool steps -------------------------------------------------------
+
+/**
+ * One UI action a tool performs. `target` is a CSS selector and may contain
+ * `{paramName}` placeholders interpolated at invocation time. The `value`
+ * field (where present) also supports `{paramName}` interpolation.
+ *
+ * The runtime dispatches real DOM events so framework-bound listeners
+ * (React onClick, Vue @click, etc.) fire identically to a user action.
+ */
+export const stepSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('click'),
+    target: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal('fill'),
+    target: z.string().min(1),
+    value: z.string(),
+  }),
+  z.object({
+    type: z.literal('select'),
+    target: z.string().min(1),
+    value: z.string(),
+  }),
+  z.object({
+    type: z.literal('check'),
+    target: z.string().min(1),
+    checked: z.boolean().optional(),
+  }),
+  z.object({
+    type: z.literal('wait_for'),
+    target: z.string().min(1),
+    timeoutMs: z.number().int().positive().optional(),
+  }),
+]);
+
+// --- DSL: resource extraction ---------------------------------------------
+
+/**
+ * How to pull one scalar out of the DOM. `selector` is optional and is
+ * resolved relative to the item element (for `list`) or the document
+ * (for `single`); omit it to use the item element itself as the source.
+ */
+export const fieldExtractSchema = z.discriminatedUnion('from', [
+  z.object({ from: z.literal('text'), selector: z.string().min(1).optional() }),
+  z.object({
+    from: z.literal('attr'),
+    selector: z.string().min(1).optional(),
+    attr: z.string().min(1),
+  }),
+  z.object({ from: z.literal('value'), selector: z.string().min(1).optional() }),
+  z.object({ from: z.literal('checked'), selector: z.string().min(1).optional() }),
+]);
+
+export const extractConfigSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('single'),
+    selector: z.string().min(1),
+    fields: z.record(z.string(), fieldExtractSchema),
+  }),
+  z.object({
+    type: z.literal('list'),
+    selector: z.string().min(1),
+    fields: z.record(z.string(), fieldExtractSchema),
+  }),
+]);
+
+// --- Capabilities & document ----------------------------------------------
 
 export const toolSchema = z.object({
   name: z.string().min(1),
   description: z.string().min(1),
   params: jsonSchemaSchema.optional(),
-  target: z.string().min(1).optional(),
-  handler: handlerRefSchema,
+  steps: z.array(stepSchema).min(1, 'tool must have at least one step'),
 });
 
 export const resourceSchema = z.object({
   name: z.string().min(1),
   description: z.string().min(1),
   schema: jsonSchemaSchema,
-  source: handlerRefSchema,
+  extract: extractConfigSchema,
 });
 
 export const companionSpecSchema = z.object({
@@ -52,10 +116,14 @@ export const companionSpecSchema = z.object({
   resources: z.array(resourceSchema).optional(),
 });
 
+// --- Inferred types -------------------------------------------------------
+
 export type CompanionSpec = z.infer<typeof companionSpecSchema>;
 export type ToolSpec = z.infer<typeof toolSchema>;
 export type ResourceSpec = z.infer<typeof resourceSchema>;
-export type HandlerRef = z.infer<typeof handlerRefSchema>;
+export type Step = z.infer<typeof stepSchema>;
+export type FieldExtract = z.infer<typeof fieldExtractSchema>;
+export type ExtractConfig = z.infer<typeof extractConfigSchema>;
 
 export function parseCompanionSpec(input: unknown): CompanionSpec {
   return companionSpecSchema.parse(input);
@@ -63,12 +131,4 @@ export function parseCompanionSpec(input: unknown): CompanionSpec {
 
 export function safeParseCompanionSpec(input: unknown) {
   return companionSpecSchema.safeParse(input);
-}
-
-export function parseHandlerRef(ref: HandlerRef): { module: string; export: string } {
-  const hashIdx = ref.indexOf('#');
-  return {
-    module: ref.slice(0, hashIdx),
-    export: ref.slice(hashIdx + 1),
-  };
 }
