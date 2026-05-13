@@ -1,8 +1,17 @@
-export { ActionRegistry } from './registry.js';
+export {
+  ActionRegistry,
+  type ToolEntry,
+  type ResourceEntry,
+} from './registry.js';
 export {
   DEFAULT_SPEC_PATH,
   loadCompanionSpec,
   type LoadResult,
+  type LoaderOptions,
+  type ModuleErrorInfo,
+  type ResolvedModule,
+  type ResolvedResource,
+  type ResolvedTool,
 } from './loader.js';
 export {
   executeSteps,

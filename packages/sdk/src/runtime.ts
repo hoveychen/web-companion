@@ -1,6 +1,11 @@
 import type { ResourceSpec, ToolSpec } from '@web-companion/spec';
 import { ActionRegistry } from './registry.js';
-import { DEFAULT_SPEC_PATH, loadCompanionSpec } from './loader.js';
+import {
+  DEFAULT_SPEC_PATH,
+  loadCompanionSpec,
+  type LoadResult,
+  type ModuleErrorInfo,
+} from './loader.js';
 import { executeSteps, type StepContext } from './dsl-executor.js';
 import { extractData } from './dom-extractor.js';
 import { checkWhere, WrongPageError } from './where-check.js';
@@ -8,6 +13,13 @@ import { checkWhere, WrongPageError } from './where-check.js';
 export interface CompanionRuntimeOptions {
   specUrl?: string;
   fetchImpl?: typeof fetch;
+  /**
+   * Called when a v0.2 module ref fails to fetch / parse. Default behavior
+   * (when omitted) is to throw and fail the whole `load()`. Provide a
+   * callback (e.g. console.warn) to swallow per-module failures while
+   * keeping the rest of the catalog usable.
+   */
+  onModuleError?: (info: ModuleErrorInfo) => void;
   /** Fired once per tool invocation, before any step executes. */
   onBeforeInvoke?: (event: BeforeInvokeEvent) => void | Promise<void>;
   /** Fired before each step — visible cursor hooks in here. */
@@ -43,6 +55,7 @@ export interface ToolResult {
 export class CompanionRuntime {
   readonly registry = new ActionRegistry();
   private baseUrl: string | null = null;
+  private loadResult: LoadResult | null = null;
   private readonly options: CompanionRuntimeOptions;
 
   constructor(options: CompanionRuntimeOptions = {}) {
@@ -50,12 +63,18 @@ export class CompanionRuntime {
   }
 
   async load(): Promise<void> {
-    const { spec, url } = await loadCompanionSpec(
+    const result = await loadCompanionSpec(
       this.options.specUrl ?? DEFAULT_SPEC_PATH,
-      this.options.fetchImpl,
+      {
+        ...(this.options.fetchImpl && { fetchImpl: this.options.fetchImpl }),
+        ...(this.options.onModuleError && {
+          onModuleError: this.options.onModuleError,
+        }),
+      },
     );
-    this.baseUrl = url;
-    this.registry.register(spec);
+    this.baseUrl = result.rootUrl;
+    this.loadResult = result;
+    this.registry.ingest(result);
   }
 
   listTools(): ToolSpec[] {
@@ -112,5 +131,10 @@ export class CompanionRuntime {
   /** Exposed so the base URL can be inspected (e.g. for diagnostics). */
   get loadedFrom(): string | null {
     return this.baseUrl;
+  }
+
+  /** Last load's flat resolution result (modules, partial failures). */
+  get lastLoadResult(): LoadResult | null {
+    return this.loadResult;
   }
 }
