@@ -18,15 +18,18 @@
   "files": ["dist"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "smoke-filter": "tsx scripts/smoke-filter.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
+    "@web-companion/sdk": "workspace:^",
     "@web-companion/spec": "workspace:^",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^25.7.0",
-    "@types/ws": "^8.5.13"
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.21.0"
   }
 }

@@ -158,8 +158,13 @@ export class PageStateTracker {
   }
 
   private compute(): PageState {
+    // Match the semantics of `where.url` (per spec docs: globs match
+    // `pathname + search + hash`, not the full href — origin is handled
+    // at connection level).
     const currentUrl =
-      typeof location !== 'undefined' ? location.href : '';
+      typeof location !== 'undefined'
+        ? location.pathname + location.search + location.hash
+        : '';
     const matched: string[] = [];
     if (typeof document !== 'undefined') {
       for (const sel of this.knownMarkers) {

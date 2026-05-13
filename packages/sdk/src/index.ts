@@ -50,7 +50,9 @@ export {
 export {
   checkWhere,
   globMatch,
+  passesWhere,
   WrongPageError,
+  type CapturedPageState,
   type WhereCheckResult,
   type WhereCheckOk,
   type WhereCheckFail,

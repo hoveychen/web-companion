@@ -6,9 +6,14 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import { passesWhere } from '@web-companion/sdk';
 import type { SessionRegistry } from './sessions.js';
 
 const RESOURCE_READ_PREFIX = 'read_';
+
+type ListToolsRequest = {
+  params?: { _meta?: { scope?: unknown } } | undefined;
+};
 
 /**
  * Per-MCP-session entry. Tied to a userId at initialize-time; subsequent
@@ -34,8 +39,26 @@ interface McpSessionEntry {
  */
 export class McpHttpRouter {
   private readonly sessions = new Map<string, McpSessionEntry>();
+  private readonly userToSessions = new Map<string, Set<string>>();
+  private readonly unsubscribeCatalog: () => void;
 
-  constructor(private readonly registry: SessionRegistry) {}
+  constructor(private readonly registry: SessionRegistry) {
+    // When the ws side updates a user's tools/resources/page state, push
+    // `notifications/tools/list_changed` to every active MCP session
+    // belonging to that user. Clients then re-pull `tools/list` and get
+    // the freshly filtered catalog.
+    this.unsubscribeCatalog = registry.onCatalogChange((userId) => {
+      const sessionIds = this.userToSessions.get(userId);
+      if (!sessionIds) return;
+      for (const sid of sessionIds) {
+        const entry = this.sessions.get(sid);
+        if (!entry) continue;
+        entry.server.sendToolListChanged().catch(() => {
+          // Notification path may fail before init; safe to swallow.
+        });
+      }
+    });
+  }
 
   async handle(
     req: IncomingMessage,
@@ -93,12 +116,23 @@ export class McpHttpRouter {
       onsessioninitialized: (sid) => {
         if (entryRef.current) {
           this.sessions.set(sid, entryRef.current);
+          let perUser = this.userToSessions.get(userId);
+          if (!perUser) {
+            perUser = new Set<string>();
+            this.userToSessions.set(userId, perUser);
+          }
+          perUser.add(sid);
         }
       },
       onsessionclosed: (sid) => {
         const closed = this.sessions.get(sid);
         if (!closed) return;
         this.sessions.delete(sid);
+        const perUser = this.userToSessions.get(closed.userId);
+        if (perUser) {
+          perUser.delete(sid);
+          if (perUser.size === 0) this.userToSessions.delete(closed.userId);
+        }
         closed.server.close().catch(() => {
           /* ignore */
         });
@@ -115,10 +149,11 @@ export class McpHttpRouter {
   private buildServer(userId: string): Server {
     const server = new Server(
       { name: 'web-companion-reference-backend', version: '0.3.0-pre' },
-      { capabilities: { tools: {} } },
+      { capabilities: { tools: { listChanged: true } } },
     );
 
-    server.setRequestHandler(ListToolsRequestSchema, async () => {
+    server.setRequestHandler(ListToolsRequestSchema, async (req) => {
+      const scope = readScope(req as ListToolsRequest);
       const session = this.registry.get(userId);
       const tools: Array<{
         name: string;
@@ -129,6 +164,7 @@ export class McpHttpRouter {
         return { tools };
       }
       for (const t of session.tools) {
+        if (scope === 'page' && !passesWhere(t.where, session.pageState)) continue;
         tools.push({
           name: `${userId}:${t.name}`,
           description: `[${userId}] ${t.description}`,
@@ -140,6 +176,7 @@ export class McpHttpRouter {
         });
       }
       for (const r of session.resources) {
+        if (scope === 'page' && !passesWhere(r.where, session.pageState)) continue;
         tools.push({
           name: `${userId}:${RESOURCE_READ_PREFIX}${r.name}`,
           description: `[${userId}] Read resource: ${r.description}`,
@@ -191,6 +228,7 @@ export class McpHttpRouter {
 
   /** Tear down everything (for graceful shutdown / tests). */
   async close(): Promise<void> {
+    this.unsubscribeCatalog();
     for (const entry of this.sessions.values()) {
       await entry.transport.close().catch(() => {
         /* ignore */
@@ -200,5 +238,11 @@ export class McpHttpRouter {
       });
     }
     this.sessions.clear();
+    this.userToSessions.clear();
   }
+}
+
+function readScope(req: ListToolsRequest): 'page' | 'all' {
+  const raw = req?.params?._meta?.scope;
+  return raw === 'all' ? 'all' : 'page';
 }

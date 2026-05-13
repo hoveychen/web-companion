@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
+    "@web-companion/sdk": "workspace:^",
     "@web-companion/spec": "workspace:^",
     "jsonwebtoken": "^9.0.2",
     "ws": "^8.18.0"

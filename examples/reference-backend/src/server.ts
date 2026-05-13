@@ -161,12 +161,32 @@ function handleSdkConnection(
     switch (type) {
       case 'tools/list':
         session.tools = (msg['tools'] as ToolSpec[]) ?? [];
+        registry.notifyCatalogChanged(userId);
         logSessionEvent('tools-listed', session.userId, session.origin, session.pageUrl, session.tools.length);
         break;
       case 'resources/list':
         session.resources = (msg['resources'] as ResourceSpec[]) ?? [];
+        registry.notifyCatalogChanged(userId);
         logSessionEvent('resources-listed', session.userId, session.origin, session.pageUrl, session.resources.length);
         break;
+      case 'page/changed': {
+        const nextUrl = typeof msg['currentUrl'] === 'string' ? (msg['currentUrl'] as string) : '';
+        const rawMarkers = msg['matchedMarkers'];
+        const nextMarkers = Array.isArray(rawMarkers)
+          ? rawMarkers.filter((m): m is string => typeof m === 'string')
+          : [];
+        const prev = session.pageState;
+        const prevSet = new Set(prev.matchedMarkers);
+        const nextSet = new Set(nextMarkers);
+        const sameMarkers =
+          prev.matchedMarkers.length === nextMarkers.length &&
+          [...nextSet].every((m) => prevSet.has(m));
+        if (prev.currentUrl !== nextUrl || !sameMarkers) {
+          session.pageState = { currentUrl: nextUrl, matchedMarkers: nextMarkers };
+          registry.notifyCatalogChanged(userId);
+        }
+        break;
+      }
       case 'tools/call/result':
       case 'resources/read/result': {
         const deliverPayload: { id?: number; result?: unknown; data?: unknown; error?: unknown } = {

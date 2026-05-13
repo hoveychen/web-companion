@@ -6,6 +6,10 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import type { BridgeWsServer } from './ws-server.js';
 
+type ListToolsRequest = {
+  params?: { _meta?: { scope?: unknown } } | undefined;
+};
+
 const META_LIST_SESSIONS_NAME = 'companion_list_sessions';
 const RESOURCE_READ_PREFIX = 'read_';
 
@@ -27,10 +31,11 @@ export function createMcpServer(bridge: BridgeWsServer): {
 } {
   const server = new Server(
     { name: 'web-companion-local-bridge', version: '0.3.0-pre' },
-    { capabilities: { tools: {} } },
+    { capabilities: { tools: { listChanged: true } } },
   );
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
+  server.setRequestHandler(ListToolsRequestSchema, async (req) => {
+    const scope = readScope(req as ListToolsRequest);
     const tools: Array<{
       name: string;
       description: string;
@@ -44,7 +49,7 @@ export function createMcpServer(bridge: BridgeWsServer): {
       },
     ];
 
-    for (const entry of bridge.listAllTools()) {
+    for (const entry of bridge.listAllTools(scope)) {
       tools.push({
         name: `${entry.namespace}:${entry.tool.name}`,
         description: `[${entry.namespace}] ${entry.tool.description}`,
@@ -56,7 +61,7 @@ export function createMcpServer(bridge: BridgeWsServer): {
       });
     }
 
-    for (const entry of bridge.listAllResources()) {
+    for (const entry of bridge.listAllResources(scope)) {
       tools.push({
         name: `${entry.namespace}:${RESOURCE_READ_PREFIX}${entry.resource.name}`,
         description: `[${entry.namespace}] Read resource: ${entry.resource.description}`,
@@ -65,6 +70,14 @@ export function createMcpServer(bridge: BridgeWsServer): {
     }
 
     return { tools };
+  });
+
+  bridge.onCatalogChange(() => {
+    server.sendToolListChanged().catch(() => {
+      // Notification path may fail before the MCP client initializes;
+      // safe to swallow because the client will pull tools/list on
+      // initialize anyway.
+    });
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
@@ -115,4 +128,9 @@ export function createMcpServer(bridge: BridgeWsServer): {
       await server.connect(transport);
     },
   };
+}
+
+function readScope(req: ListToolsRequest): 'page' | 'all' {
+  const raw = req?.params?._meta?.scope;
+  return raw === 'all' ? 'all' : 'page';
 }

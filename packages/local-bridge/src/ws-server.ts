@@ -1,4 +1,5 @@
 import type { ResourceSpec, ToolSpec } from '@web-companion/spec';
+import { passesWhere, type CapturedPageState } from '@web-companion/sdk';
 import { WebSocket, WebSocketServer } from 'ws';
 import { OriginStore, type OriginVerdict } from './origin-store.js';
 
@@ -11,6 +12,8 @@ export interface SessionInfo {
   resourceCount: number;
   /** Disambiguation namespace used by the stdio MCP layer when surfacing tools. */
   namespace: string;
+  /** Most recent v0.4 page state pushed by the sdk. Empty until the first `page/changed` ws msg. */
+  pageState: CapturedPageState;
 }
 
 /**
@@ -56,6 +59,7 @@ interface InternalSession {
   tools: ToolSpec[];
   resources: ResourceSpec[];
   namespace: string;
+  pageState: CapturedPageState;
 }
 
 interface PendingRequest {
@@ -72,6 +76,7 @@ export class BridgeWsServer {
   private readonly namespaceToSession = new Map<string, string>();
   private readonly pending = new Map<number, PendingRequest>();
   private readonly graceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly catalogListeners = new Set<() => void>();
   private nextRequestId = 1;
   private ready: Promise<void>;
   private readonly originStore: OriginStore;
@@ -111,27 +116,63 @@ export class BridgeWsServer {
       toolCount: s.tools.length,
       resourceCount: s.resources.length,
       namespace: s.namespace,
+      pageState: { ...s.pageState, matchedMarkers: [...s.pageState.matchedMarkers] },
     }));
   }
 
-  listAllTools(): Array<{ namespace: string; sessionId: string; tool: ToolSpec }> {
+  /**
+   * @param scope 'page' (default) returns tools whose `where` matches each
+   * session's current page state. 'all' returns the unfiltered catalog —
+   * agents pass `_meta.scope='all'` to bypass the filter.
+   */
+  listAllTools(
+    scope: 'page' | 'all' = 'page',
+  ): Array<{ namespace: string; sessionId: string; tool: ToolSpec }> {
     const out: Array<{ namespace: string; sessionId: string; tool: ToolSpec }> = [];
     for (const s of this.sessions.values()) {
       for (const tool of s.tools) {
+        if (scope === 'page' && !passesWhere(tool.where, s.pageState)) continue;
         out.push({ namespace: s.namespace, sessionId: s.sessionId, tool });
       }
     }
     return out;
   }
 
-  listAllResources(): Array<{ namespace: string; sessionId: string; resource: ResourceSpec }> {
+  listAllResources(
+    scope: 'page' | 'all' = 'page',
+  ): Array<{ namespace: string; sessionId: string; resource: ResourceSpec }> {
     const out: Array<{ namespace: string; sessionId: string; resource: ResourceSpec }> = [];
     for (const s of this.sessions.values()) {
       for (const r of s.resources) {
+        if (scope === 'page' && !passesWhere(r.where, s.pageState)) continue;
         out.push({ namespace: s.namespace, sessionId: s.sessionId, resource: r });
       }
     }
     return out;
+  }
+
+  /**
+   * Subscribe to "tool catalog might have changed" events — fires after
+   * any sdk-initiated update that could change what `listAllTools()` /
+   * `listAllResources()` returns: a fresh tools/list, a fresh
+   * resources/list, a page/changed that flipped a `where` match. The
+   * stdio MCP server uses this to push `notifications/tools/list_changed`.
+   *
+   * Returns an unsubscribe function.
+   */
+  onCatalogChange(cb: () => void): () => void {
+    this.catalogListeners.add(cb);
+    return () => this.catalogListeners.delete(cb);
+  }
+
+  private notifyCatalogChanged(): void {
+    for (const cb of this.catalogListeners) {
+      try {
+        cb();
+      } catch {
+        // Listeners must not break the ws loop.
+      }
+    }
   }
 
   resolveNamespace(namespace: string): string | undefined {
@@ -209,10 +250,28 @@ export class BridgeWsServer {
       switch (type) {
         case 'tools/list':
           bound.tools = (msg['tools'] as ToolSpec[]) ?? [];
+          this.notifyCatalogChanged();
           break;
         case 'resources/list':
           bound.resources = (msg['resources'] as ResourceSpec[]) ?? [];
+          this.notifyCatalogChanged();
           break;
+        case 'page/changed': {
+          const next: CapturedPageState = {
+            currentUrl: stringOr(msg['currentUrl'], ''),
+            matchedMarkers: Array.isArray(msg['matchedMarkers'])
+              ? (msg['matchedMarkers'] as unknown[]).filter(
+                  (m): m is string => typeof m === 'string',
+                )
+              : [],
+          };
+          // Only notify if the filter result could actually have changed.
+          if (!sameState(bound.pageState, next)) {
+            bound.pageState = next;
+            this.notifyCatalogChanged();
+          }
+          break;
+        }
         case 'tools/call/result':
         case 'resources/read/result':
           this.deliverResponse(msg);
@@ -279,6 +338,7 @@ export class BridgeWsServer {
       tools: [],
       resources: [],
       namespace,
+      pageState: { currentUrl: '', matchedMarkers: [] },
     };
 
     // Grace-period reconnect: existing session under same id keeps its slot,
@@ -338,6 +398,7 @@ export class BridgeWsServer {
       if (this.sessions.get(session.sessionId) === session) {
         this.sessions.delete(session.sessionId);
         this.namespaceToSession.delete(session.namespace);
+        this.notifyCatalogChanged();
       }
     }, this.navigationGraceMs);
     this.graceTimers.set(session.sessionId, timer);
@@ -380,4 +441,12 @@ function originSlug(origin: string): string {
 
 function stringOr(v: unknown, fallback: string): string {
   return typeof v === 'string' ? v : fallback;
+}
+
+function sameState(a: CapturedPageState, b: CapturedPageState): boolean {
+  if (a.currentUrl !== b.currentUrl) return false;
+  if (a.matchedMarkers.length !== b.matchedMarkers.length) return false;
+  const aSet = new Set(a.matchedMarkers);
+  for (const m of b.matchedMarkers) if (!aSet.has(m)) return false;
+  return true;
 }

@@ -1,4 +1,5 @@
 import type { ResourceSpec, ToolSpec } from '@web-companion/spec';
+import type { CapturedPageState } from '@web-companion/sdk';
 import type { WebSocket } from 'ws';
 
 /**
@@ -22,6 +23,8 @@ export interface UserSession {
   pageUrl: string;
   tools: ToolSpec[];
   resources: ResourceSpec[];
+  /** Most recent v0.4 page state pushed by the sdk's `page/changed` msg. */
+  pageState: CapturedPageState;
   /** Resolves of in-flight requests issued by the MCP side, keyed by ws message id. */
   pending: Map<number, PendingRequest>;
   nextRequestId: number;
@@ -37,6 +40,27 @@ const REQUEST_TIMEOUT_MS = 30_000;
 
 export class SessionRegistry {
   private readonly byUser = new Map<string, UserSession>();
+  private readonly catalogListeners = new Set<(userId: string) => void>();
+
+  /**
+   * Subscribe to "the filtered tools/list for this user just might have
+   * changed" events. Fired after fresh tools/list, fresh resources/list,
+   * page/changed that flipped a `where` match, or session drop.
+   */
+  onCatalogChange(cb: (userId: string) => void): () => void {
+    this.catalogListeners.add(cb);
+    return () => this.catalogListeners.delete(cb);
+  }
+
+  notifyCatalogChanged(userId: string): void {
+    for (const cb of this.catalogListeners) {
+      try {
+        cb(userId);
+      } catch {
+        // Listeners must not break the ws loop.
+      }
+    }
+  }
 
   upsert(userId: string, ws: WebSocket, info: {
     origin: string;
@@ -65,6 +89,7 @@ export class SessionRegistry {
       pageUrl: info.pageUrl,
       tools: [],
       resources: [],
+      pageState: { currentUrl: '', matchedMarkers: [] },
       pending: new Map(),
       nextRequestId: 1,
     };
@@ -80,6 +105,7 @@ export class SessionRegistry {
       p.reject(new Error('user session closed'));
     }
     this.byUser.delete(userId);
+    this.notifyCatalogChanged(userId);
   }
 
   get(userId: string): UserSession | undefined {
