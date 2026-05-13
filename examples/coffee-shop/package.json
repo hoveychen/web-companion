@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@web-companion/react": "workspace:^",
+    "@web-companion/sidecar": "workspace:^",
     "@web-companion/webmcp": "workspace:^",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

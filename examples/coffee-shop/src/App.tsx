@@ -5,12 +5,21 @@ import {
   type CompanionRuntime,
   type DeciderFn,
 } from '@web-companion/react';
+import { Sidecar } from '@web-companion/sidecar/react';
 import { registerCompanionWithWebMCP } from '@web-companion/webmcp';
 import { cartStore, useCart, MENU, searchStore, useSearch } from './cart-store.js';
 
 export function App() {
   const items = useCart();
   const search = useSearch();
+
+  // Mode-2 switch: when both VITE_BACKEND_URL and VITE_USER_TOKEN are set,
+  // mount the headless <Sidecar/> instead of the in-page <Companion> sidebar.
+  // The remote agent backend (e.g. `examples/reference-backend`) drives the
+  // page via WebSocket; no local LLM key, no sidebar UI.
+  const backendUrl = import.meta.env.VITE_BACKEND_URL as string | undefined;
+  const userToken = import.meta.env.VITE_USER_TOKEN as string | undefined;
+  const useSidecar = Boolean(backendUrl && userToken);
 
   const decider = useMemo<DeciderFn | undefined>(() => {
     const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
@@ -184,10 +193,18 @@ export function App() {
         </aside>
       </main>
 
-      <Companion
-        onRuntimeReady={handleRuntimeReady}
-        {...(decider ? { decider } : {})}
-      />
+      {useSidecar ? (
+        <Sidecar
+          backendUrl={backendUrl!}
+          token={userToken!}
+          onError={(err) => console.warn('[web-companion] sidecar error:', err)}
+        />
+      ) : (
+        <Companion
+          onRuntimeReady={handleRuntimeReady}
+          {...(decider ? { decider } : {})}
+        />
+      )}
     </div>
   );
 }

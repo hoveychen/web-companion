@@ -17,6 +17,9 @@ importers:
       '@web-companion/react':
         specifier: workspace:^
         version: link:../../packages/react
+      '@web-companion/sidecar':
+        specifier: workspace:^
+        version: link:../../packages/sidecar
       '@web-companion/webmcp':
         specifier: workspace:^
         version: link:../../packages/webmcp
