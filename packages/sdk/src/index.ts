@@ -69,3 +69,12 @@ export {
   type PageState,
   type PageStateTrackerOptions,
 } from './page-state.js';
+export {
+  deriveFlow,
+  summarizePages,
+  summarizeFlows,
+  summarizeTools,
+  type FlowSummary,
+  type PagesSummary,
+  type ToolDescriptor,
+} from './meta-tools.js';

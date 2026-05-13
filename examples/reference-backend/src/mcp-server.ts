@@ -6,10 +6,18 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { passesWhere } from '@web-companion/sdk';
+import {
+  passesWhere,
+  summarizeFlows,
+  summarizePages,
+  summarizeTools,
+} from '@web-companion/sdk';
 import type { SessionRegistry } from './sessions.js';
 
 const RESOURCE_READ_PREFIX = 'read_';
+const META_PAGES_NAME = 'companion_pages';
+const META_FLOWS_NAME = 'companion_flows';
+const META_TOOLS_NAME = 'companion_tools';
 
 type ListToolsRequest = {
   params?: { _meta?: { scope?: unknown } } | undefined;
@@ -159,7 +167,34 @@ export class McpHttpRouter {
         name: string;
         description: string;
         inputSchema: Record<string, unknown>;
-      }> = [];
+      }> = [
+        {
+          name: META_PAGES_NAME,
+          description:
+            'Current page state for your session — currentUrl, matchedMarkers, and the flows your page satisfies right now.',
+          inputSchema: { type: 'object', properties: {} },
+        },
+        {
+          name: META_FLOWS_NAME,
+          description:
+            'All flows declared in your page\'s catalog. Each entry has tool/resource counts and an `active` flag indicating whether the current pageState satisfies the flow.',
+          inputSchema: { type: 'object', properties: {} },
+        },
+        {
+          name: META_TOOLS_NAME,
+          description:
+            'Drill into a specific flow and return its tools. If `flow` is omitted, returns the active tools under your current pageState.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              flow: {
+                type: 'string',
+                description: 'Optional flow name. Omit for the active set.',
+              },
+            },
+          },
+        },
+      ];
       if (!session) {
         return { tools };
       }
@@ -189,6 +224,31 @@ export class McpHttpRouter {
     server.setRequestHandler(CallToolRequestSchema, async (req) => {
       const { name, arguments: rawArgs } = req.params;
       const args = (rawArgs ?? {}) as Record<string, unknown>;
+
+      // Meta tools — namespace-free, always available.
+      if (name === META_PAGES_NAME) {
+        const session = this.registry.get(userId);
+        const out = session
+          ? summarizePages(session.tools, session.resources, session.pageState)
+          : { currentUrl: '', matchedMarkers: [], currentFlows: [] };
+        return { content: [{ type: 'text', text: JSON.stringify(out, null, 2) }] };
+      }
+      if (name === META_FLOWS_NAME) {
+        const session = this.registry.get(userId);
+        const out = session
+          ? summarizeFlows(session.tools, session.resources, session.pageState)
+          : [];
+        return { content: [{ type: 'text', text: JSON.stringify(out, null, 2) }] };
+      }
+      if (name === META_TOOLS_NAME) {
+        const session = this.registry.get(userId);
+        const flow =
+          typeof args['flow'] === 'string' ? (args['flow'] as string) : undefined;
+        const out = session
+          ? summarizeTools(session.tools, session.pageState, flow)
+          : [];
+        return { content: [{ type: 'text', text: JSON.stringify(out, null, 2) }] };
+      }
 
       const colonIdx = name.indexOf(':');
       if (colonIdx === -1) {

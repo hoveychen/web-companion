@@ -152,6 +152,36 @@ export class BridgeWsServer {
   }
 
   /**
+   * Snapshot of every active session including its tools, resources, and
+   * latest page state. Consumed by the v0.4 meta tools (`pages` / `flows`
+   * / `tools`) which need to summarize per-session — the lightweight
+   * `listSessions()` doesn't carry the tool catalog.
+   */
+  snapshotSessions(): Array<{
+    info: SessionInfo;
+    tools: ToolSpec[];
+    resources: ResourceSpec[];
+  }> {
+    return [...this.sessions.values()].map((s) => ({
+      info: {
+        sessionId: s.sessionId,
+        origin: s.origin,
+        tabTitle: s.tabTitle,
+        pageUrl: s.pageUrl,
+        toolCount: s.tools.length,
+        resourceCount: s.resources.length,
+        namespace: s.namespace,
+        pageState: {
+          currentUrl: s.pageState.currentUrl,
+          matchedMarkers: [...s.pageState.matchedMarkers],
+        },
+      },
+      tools: [...s.tools],
+      resources: [...s.resources],
+    }));
+  }
+
+  /**
    * Subscribe to "tool catalog might have changed" events — fires after
    * any sdk-initiated update that could change what `listAllTools()` /
    * `listAllResources()` returns: a fresh tools/list, a fresh
