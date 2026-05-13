@@ -20,7 +20,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && pnpm run gen-schema",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "gen-schema": "tsx scripts/gen-schema.ts"
+    "gen-schema": "tsx scripts/gen-schema.ts",
+    "smoke": "tsx scripts/smoke.ts"
   },
   "dependencies": {
     "zod": "^3.23.0"

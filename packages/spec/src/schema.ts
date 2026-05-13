@@ -26,6 +26,23 @@ const jsonSchemaSchema: z.ZodType = z.lazy(() =>
   ]),
 );
 
+// --- Identifier grammar ----------------------------------------------------
+
+/**
+ * Tool / resource / module identifier (the raw, in-file `name`). v0.4 reserves
+ * `.` as the namespace separator (`<flow>.<toolName>`), so raw names may not
+ * contain it. The runtime applies the namespace prefix when surfacing items
+ * from a module to the MCP / WebMCP / sidebar layer.
+ */
+const identifierRegex = /^[A-Za-z][A-Za-z0-9_-]*$/;
+const identifierSchema = z
+  .string()
+  .min(1)
+  .regex(identifierRegex, {
+    message:
+      'identifier must match /^[A-Za-z][A-Za-z0-9_-]*$/ — `.` is reserved for namespacing',
+  });
+
 // --- DSL: tool steps -------------------------------------------------------
 
 /**
@@ -120,7 +137,7 @@ export const whereSchema = z
   });
 
 export const toolSchema = z.object({
-  name: z.string().min(1),
+  name: identifierSchema,
   description: z.string().min(1),
   params: jsonSchemaSchema.optional(),
   where: whereSchema.optional(),
@@ -128,24 +145,89 @@ export const toolSchema = z.object({
 });
 
 export const resourceSchema = z.object({
-  name: z.string().min(1),
+  name: identifierSchema,
   description: z.string().min(1),
   schema: jsonSchemaSchema,
   where: whereSchema.optional(),
   extract: extractConfigSchema,
 });
 
-export const companionSpecSchema = z.object({
-  version: z.literal('0.1'),
-  tools: z.array(toolSchema).optional(),
-  resources: z.array(resourceSchema).optional(),
+/**
+ * v0.2 only — a pointer to another `companion.json` whose `tools` / `resources`
+ * are namespaced under `<moduleName>.` at load time. The module's URL is
+ * resolved against the parent document's URL. Per-module `where` (if present)
+ * is AND'd with each contained capability's `where` by the loader.
+ *
+ * Modules themselves may NOT declare `modules` in v0.2 (one-level deep).
+ */
+export const moduleRefSchema = z.object({
+  name: identifierSchema,
+  url: z.string().min(1),
+  description: z.string().optional(),
+  where: whereSchema.optional(),
 });
+
+const v01SpecSchema = z
+  .object({
+    version: z.literal('0.1'),
+    tools: z.array(toolSchema).optional(),
+    resources: z.array(resourceSchema).optional(),
+  })
+  .strict();
+
+const v02SpecSchema = z
+  .object({
+    version: z.literal('0.2'),
+    modules: z.array(moduleRefSchema).optional(),
+    tools: z.array(toolSchema).optional(),
+    resources: z.array(resourceSchema).optional(),
+  })
+  .strict();
+
+/**
+ * Top-level companion document. v0.1 keeps the original flat shape; v0.2
+ * adds the optional `modules` ref array for splitting large catalogs.
+ *
+ * Cross-file duplicate detection (e.g. two modules each named `foo`) is the
+ * loader's job — at the schema layer we only enforce per-file duplicate name
+ * rejection via the .refine() below.
+ */
+export const companionSpecSchema = z
+  .discriminatedUnion('version', [v01SpecSchema, v02SpecSchema])
+  .superRefine((spec, ctx) => {
+    rejectDuplicateNames(spec.tools, 'tools', ctx);
+    rejectDuplicateNames(spec.resources, 'resources', ctx);
+    if ('modules' in spec) {
+      rejectDuplicateNames(spec.modules, 'modules', ctx);
+    }
+  });
+
+function rejectDuplicateNames(
+  items: Array<{ name: string }> | undefined,
+  collection: string,
+  ctx: z.RefinementCtx,
+): void {
+  if (!items) return;
+  const seen = new Set<string>();
+  for (let i = 0; i < items.length; i++) {
+    const n = items[i]!.name;
+    if (seen.has(n)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [collection, i, 'name'],
+        message: `duplicate ${collection.slice(0, -1)} name '${n}'`,
+      });
+    }
+    seen.add(n);
+  }
+}
 
 // --- Inferred types -------------------------------------------------------
 
 export type CompanionSpec = z.infer<typeof companionSpecSchema>;
 export type ToolSpec = z.infer<typeof toolSchema>;
 export type ResourceSpec = z.infer<typeof resourceSchema>;
+export type ModuleRef = z.infer<typeof moduleRefSchema>;
 export type Step = z.infer<typeof stepSchema>;
 export type FieldExtract = z.infer<typeof fieldExtractSchema>;
 export type ExtractConfig = z.infer<typeof extractConfigSchema>;
