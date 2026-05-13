@@ -6,10 +6,11 @@ import {
   type DeciderFn,
 } from '@web-companion/react';
 import { registerCompanionWithWebMCP } from '@web-companion/webmcp';
-import { cartStore, useCart, MENU } from './cart-store.js';
+import { cartStore, useCart, MENU, searchStore, useSearch } from './cart-store.js';
 
 export function App() {
   const items = useCart();
+  const search = useSearch();
 
   const decider = useMemo<DeciderFn | undefined>(() => {
     const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
@@ -43,6 +44,61 @@ export function App() {
           试着对右边的 Companion 说：「加一份摩卡」「看看购物车」「结账」
         </p>
       </header>
+
+      <section style={searchSectionStyle}>
+        <h2 style={sectionTitle}>搜索</h2>
+        <div style={searchRowStyle}>
+          <input
+            type="text"
+            value={search.query}
+            onChange={(e) => searchStore.setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') searchStore.submit();
+            }}
+            placeholder="试搜：拿铁、咖啡、mocha…"
+            data-ai="search-input"
+            style={searchInputStyle}
+          />
+          <button
+            type="button"
+            data-ai-tool="search-submit"
+            onClick={() => searchStore.submit()}
+            style={searchSubmitStyle}
+          >
+            搜
+          </button>
+        </div>
+        {search.searching && (
+          <div data-ai="search-loading" style={searchLoadingStyle}>
+            搜索中…
+          </div>
+        )}
+        {!search.searching && search.hasSearched && (
+          <div data-ai="search-results" style={searchResultsStyle}>
+            {search.results.length === 0 ? (
+              <span style={{ opacity: 0.5, fontSize: 13 }}>无匹配</span>
+            ) : (
+              search.results.map((r) => (
+                <div
+                  key={r.id}
+                  data-ai="search-result-item"
+                  data-id={r.id}
+                  style={resultItemStyle}
+                >
+                  <span style={{ fontSize: 24 }}>{r.emoji}</span>
+                  <span data-ai="result-name">{r.name}</span>
+                  <span
+                    style={{ marginLeft: 'auto', opacity: 0.6, fontSize: 13 }}
+                    data-ai="result-price"
+                  >
+                    ¥{r.price}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </section>
 
       <main style={mainStyle}>
         <section style={menuSectionStyle}>
@@ -144,6 +200,57 @@ const pageStyle: CSSProperties = {
   paddingRight: 'calc(360px + 48px)',
 };
 const headerStyle: CSSProperties = { marginBottom: 24 };
+const searchSectionStyle: CSSProperties = {
+  background: 'white',
+  borderRadius: 12,
+  padding: 20,
+  marginBottom: 24,
+  boxShadow: '0 6px 20px rgba(0,0,0,0.06)',
+};
+const searchRowStyle: CSSProperties = {
+  display: 'flex',
+  gap: 8,
+  alignItems: 'center',
+};
+const searchInputStyle: CSSProperties = {
+  flex: 1,
+  border: '1px solid rgba(0,0,0,0.12)',
+  borderRadius: 8,
+  padding: '8px 12px',
+  fontSize: 14,
+  fontFamily: 'inherit',
+  outline: 'none',
+};
+const searchSubmitStyle: CSSProperties = {
+  background: 'rgb(99 102 241)',
+  color: 'white',
+  border: 'none',
+  borderRadius: 8,
+  padding: '8px 16px',
+  fontSize: 14,
+  fontWeight: 500,
+  cursor: 'pointer',
+};
+const searchLoadingStyle: CSSProperties = {
+  marginTop: 12,
+  fontSize: 13,
+  opacity: 0.6,
+};
+const searchResultsStyle: CSSProperties = {
+  marginTop: 12,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+};
+const resultItemStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  padding: '6px 10px',
+  background: 'rgba(99,102,241,0.05)',
+  borderRadius: 6,
+  fontSize: 14,
+};
 const mainStyle: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: '2fr 1fr',

@@ -83,6 +83,45 @@ test.describe('Coffee shop · Companion demo end-to-end', () => {
     await expect(timeoutErr).toHaveCount(0);
   });
 
+  test('search: 3-step DSL fill+click+wait_for — results region only mounts after async, cursor visits all three targets', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('text=ready')).toBeVisible({ timeout: 10_000 });
+
+    await expect(page.locator('[data-ai="search-results"]')).toHaveCount(0);
+
+    const input = page.locator('input[placeholder="tell Companion what to do"]');
+    await input.fill('search query=拿铁');
+    await input.press('Enter');
+
+    await expect(page.locator('[data-ai="search-results"]')).toBeVisible({ timeout: 5_000 });
+
+    const latteResult = page.locator('[data-ai="search-result-item"][data-id="latte"]');
+    await expect(latteResult).toBeVisible();
+    await expect(latteResult.locator('[data-ai="result-name"]')).toHaveText('拿铁');
+
+    const inputBox = await page.locator('[data-ai="search-input"]').inputValue();
+    expect(inputBox).toBe('拿铁');
+  });
+
+  test('search_results resource: DOM-extracts the rendered hit list', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('text=ready')).toBeVisible({ timeout: 10_000 });
+
+    const input = page.locator('input[placeholder="tell Companion what to do"]');
+    await input.fill('search query=latte');
+    await input.press('Enter');
+    await expect(page.locator('[data-ai="search-result-item"][data-id="latte"]')).toBeVisible({
+      timeout: 5_000,
+    });
+
+    await input.fill('search_results');
+    await input.press('Enter');
+
+    const pre = page.locator('pre').filter({ hasText: '"latte"' }).last();
+    await expect(pre).toBeVisible({ timeout: 5_000 });
+    await expect(pre).toContainText('"name": "拿铁"');
+  });
+
   test('checkout flies cursor to checkout button and empties cart', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('text=ready')).toBeVisible({ timeout: 10_000 });

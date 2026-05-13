@@ -1,0 +1,36 @@
+{
+  "name": "@web-companion/annotator",
+  "version": "0.2.0-pre",
+  "description": "Read a React .tsx file, emit a companion.json draft + suggestions for which elements to mark with data-ai-* attributes. Pure suggestion — never patches the source.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "web-companion-annotator": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "annotate": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.95.2",
+    "@web-companion/spec": "workspace:^",
+    "typescript": "^5.6.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^25.7.0",
+    "tsx": "^4.21.0"
+  }
+}

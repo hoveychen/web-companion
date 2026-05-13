@@ -73,3 +73,66 @@ export function useCart(): CartItem[] {
     cartStore.getItems,
   );
 }
+
+// --- Search store (separate state, same useSyncExternalStore pattern) -----
+// Fake async to make wait_for steps meaningful — the results region only
+// mounts after this delay elapses, so the DSL's wait_for actually waits.
+const SEARCH_DELAY_MS = 200;
+
+export interface SearchState {
+  query: string;
+  results: MenuItem[];
+  searching: boolean;
+  hasSearched: boolean;
+}
+
+let searchState: SearchState = {
+  query: '',
+  results: [],
+  searching: false,
+  hasSearched: false,
+};
+const searchListeners = new Set<() => void>();
+const emitSearch = () => searchListeners.forEach((l) => l());
+
+export const searchStore = {
+  getState(): SearchState {
+    return searchState;
+  },
+  setQuery(q: string) {
+    searchState = { ...searchState, query: q };
+    emitSearch();
+  },
+  submit() {
+    searchState = { ...searchState, searching: true, hasSearched: true };
+    emitSearch();
+    const q = searchState.query.trim().toLowerCase();
+    setTimeout(() => {
+      const results = q
+        ? MENU.filter(
+            (m) => m.id.toLowerCase().includes(q) || m.name.includes(q),
+          )
+        : [];
+      searchState = { ...searchState, results, searching: false };
+      emitSearch();
+    }, SEARCH_DELAY_MS);
+  },
+  clear() {
+    searchState = { query: '', results: [], searching: false, hasSearched: false };
+    emitSearch();
+  },
+  subscribe(listener: () => void): () => void {
+    searchListeners.add(listener);
+    return () => {
+      searchListeners.delete(listener);
+    };
+  },
+};
+
+export function useSearch(): SearchState {
+  return useSyncExternalStore(
+    searchStore.subscribe,
+    searchStore.getState,
+    searchStore.getState,
+  );
+}

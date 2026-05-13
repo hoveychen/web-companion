@@ -42,6 +42,25 @@
       "steps": [
         { "type": "click", "target": "[data-ai-tool='checkout']" }
       ]
+    },
+    {
+      "name": "search",
+      "description": "在菜单里搜索 query 关键词（id 或中文名都匹配）。完整三步：fill 输入框 → click 提交按钮 → wait_for 结果区出现。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "搜索关键词，例如 拿铁 / mocha / 咖啡"
+          }
+        },
+        "required": ["query"]
+      },
+      "steps": [
+        { "type": "fill",     "target": "[data-ai='search-input']", "value": "{query}" },
+        { "type": "click",    "target": "[data-ai-tool='search-submit']" },
+        { "type": "wait_for", "target": "[data-ai='search-results']", "timeoutMs": 3000 }
+      ]
     }
   ],
   "resources": [
@@ -66,6 +85,30 @@
           "id":    { "from": "attr",  "attr": "data-id" },
           "name":  { "from": "text",  "selector": "[data-ai='item-name']" },
           "price": { "from": "text",  "selector": "[data-ai='item-price']" }
+        }
+      }
+    },
+    {
+      "name": "search_results",
+      "description": "上一次搜索的命中结果。每项有 id, name, price。",
+      "schema": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "name": { "type": "string" },
+            "price": { "type": "string" }
+          }
+        }
+      },
+      "extract": {
+        "type": "list",
+        "selector": "[data-ai='search-result-item']",
+        "fields": {
+          "id":    { "from": "attr",  "attr": "data-id" },
+          "name":  { "from": "text",  "selector": "[data-ai='result-name']" },
+          "price": { "from": "text",  "selector": "[data-ai='result-price']" }
         }
       }
     },
