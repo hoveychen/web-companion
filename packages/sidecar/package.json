@@ -1,0 +1,38 @@
+{
+  "name": "@web-companion/sidecar",
+  "version": "0.3.0-pre",
+  "description": "Network sidecar — mounts the web-companion runtime + visible cursor inside a website and dials a remote agent backend over WebSocket. Carries `sessionToken` for multi-user routing. No UI — for the chat-sidebar demo see examples/with-sidebar.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@web-companion/sdk": "workspace:^",
+    "@web-companion/spec": "workspace:^"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": { "optional": true }
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0"
+  }
+}
