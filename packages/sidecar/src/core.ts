@@ -50,8 +50,8 @@ export interface AgentConnection {
  *
  * Use this when the website wants `claude code` / `claw` / its own backend
  * agent to drive the page from a remote process. For purely local /
- * sidebar-style integration, see `@web-companion/react`'s `<Companion>`
- * (demo-only in v0.3).
+ * sidebar-style integration, see `examples/with-sidebar`'s `<Companion>`
+ * (demo-only in v0.3, formerly the `@web-companion/react` npm package).
  */
 export async function connectAgent(
   options: ConnectAgentOptions,

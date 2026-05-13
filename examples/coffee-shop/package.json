@@ -10,8 +10,8 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@web-companion/react": "workspace:^",
     "@web-companion/sidecar": "workspace:^",
+    "with-sidebar": "workspace:^",
     "@web-companion/webmcp": "workspace:^",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

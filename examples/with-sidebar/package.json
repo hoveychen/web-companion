@@ -1,7 +1,8 @@
 {
-  "name": "@web-companion/react",
-  "version": "0.1.0",
-  "description": "React bindings — the top-level <Companion/> component mounts the runtime, the visible cursor, and a chat sidebar. In v0 the decision maker is a keyword-matching stub; the real LLM lands in P7.",
+  "name": "with-sidebar",
+  "version": "0.3.0-pre",
+  "private": true,
+  "description": "Demo: in-page chat sidebar that drives web-companion locally (no remote agent). v0.3+ this is an example, not a published deliverable — production integrations use @web-companion/sdk (custom UI) or @web-companion/sidecar (remote agent). The old @web-companion/react npm package corresponds to this code prior to repositioning.",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -12,9 +13,6 @@
       "import": "./dist/index.js"
     }
   },
-  "files": [
-    "dist"
-  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"

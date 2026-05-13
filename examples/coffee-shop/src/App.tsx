@@ -4,7 +4,7 @@ import {
   createAnthropicDecider,
   type CompanionRuntime,
   type DeciderFn,
-} from '@web-companion/react';
+} from 'with-sidebar';
 import { Sidecar } from '@web-companion/sidecar/react';
 import { registerCompanionWithWebMCP } from '@web-companion/webmcp';
 import { cartStore, useCart, MENU, searchStore, useSearch } from './cart-store.js';

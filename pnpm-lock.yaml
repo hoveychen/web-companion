@@ -14,9 +14,6 @@ importers:
 
   examples/coffee-shop:
     dependencies:
-      '@web-companion/react':
-        specifier: workspace:^
-        version: link:../../packages/react
       '@web-companion/sidecar':
         specifier: workspace:^
         version: link:../../packages/sidecar
@@ -29,6 +26,9 @@ importers:
       react-dom:
         specifier: ^19.0.0
         version: 19.2.6(react@19.2.6)
+      with-sidebar:
+        specifier: workspace:^
+        version: link:../with-sidebar
     devDependencies:
       '@playwright/test':
         specifier: ^1.60.0
@@ -74,6 +74,25 @@ importers:
         specifier: ^4.21.0
         version: 4.21.0
 
+  examples/with-sidebar:
+    dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^0.95.2
+        version: 0.95.2(zod@3.25.76)
+      '@web-companion/sdk':
+        specifier: workspace:^
+        version: link:../../packages/sdk
+      '@web-companion/spec':
+        specifier: workspace:^
+        version: link:../../packages/spec
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.14
+      react:
+        specifier: ^19.0.0
+        version: 19.2.6
+
   packages/annotator:
     dependencies:
       '@anthropic-ai/sdk':
@@ -114,25 +133,6 @@ importers:
       '@types/ws':
         specifier: ^8.5.13
         version: 8.18.1
-
-  packages/react:
-    dependencies:
-      '@anthropic-ai/sdk':
-        specifier: ^0.95.2
-        version: 0.95.2(zod@3.25.76)
-      '@web-companion/sdk':
-        specifier: workspace:^
-        version: link:../sdk
-      '@web-companion/spec':
-        specifier: workspace:^
-        version: link:../spec
-    devDependencies:
-      '@types/react':
-        specifier: ^19.0.0
-        version: 19.2.14
-      react:
-        specifier: ^19.0.0
-        version: 19.2.6
 
   packages/sdk:
     dependencies:
