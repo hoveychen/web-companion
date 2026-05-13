@@ -22,5 +22,9 @@
   "dependencies": {
     "@web-companion/spec": "workspace:^",
     "motion": "^12.38.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1",
+    "ws": "^8.20.1"
   }
 }

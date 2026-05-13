@@ -96,10 +96,34 @@ export const extractConfigSchema = z.discriminatedUnion('type', [
 
 // --- Capabilities & document ----------------------------------------------
 
+/**
+ * Page-scope predicate for a tool or resource. All provided fields must pass
+ * (AND). Omit entirely to make the capability site-wide available.
+ *
+ *   - `url`    : minimatch-style glob against `location.pathname + search + hash`
+ *                (NOT the full href — origin is handled at connection level).
+ *                Use this for SSR / multi-page apps.
+ *   - `marker` : a CSS selector that must `querySelector` non-null on the
+ *                current document. Use this for SPAs that don't rotate URLs
+ *                (hash routing, state-only routing) — the developer / AI
+ *                annotator tags each "view" wrapper with `data-ai-view='...'`.
+ *
+ * Both can be combined for double-confirmation.
+ */
+export const whereSchema = z
+  .object({
+    url: z.string().min(1).optional(),
+    marker: z.string().min(1).optional(),
+  })
+  .refine((w) => w.url !== undefined || w.marker !== undefined, {
+    message: 'where must declare at least one of `url` or `marker`',
+  });
+
 export const toolSchema = z.object({
   name: z.string().min(1),
   description: z.string().min(1),
   params: jsonSchemaSchema.optional(),
+  where: whereSchema.optional(),
   steps: z.array(stepSchema).min(1, 'tool must have at least one step'),
 });
 
@@ -107,6 +131,7 @@ export const resourceSchema = z.object({
   name: z.string().min(1),
   description: z.string().min(1),
   schema: jsonSchemaSchema,
+  where: whereSchema.optional(),
   extract: extractConfigSchema,
 });
 
@@ -124,6 +149,7 @@ export type ResourceSpec = z.infer<typeof resourceSchema>;
 export type Step = z.infer<typeof stepSchema>;
 export type FieldExtract = z.infer<typeof fieldExtractSchema>;
 export type ExtractConfig = z.infer<typeof extractConfigSchema>;
+export type WhereSpec = z.infer<typeof whereSchema>;
 
 export function parseCompanionSpec(input: unknown): CompanionSpec {
   return companionSpecSchema.parse(input);

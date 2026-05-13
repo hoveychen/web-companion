@@ -3,6 +3,7 @@ import { ActionRegistry } from './registry.js';
 import { DEFAULT_SPEC_PATH, loadCompanionSpec } from './loader.js';
 import { executeSteps, type StepContext } from './dsl-executor.js';
 import { extractData } from './dom-extractor.js';
+import { checkWhere, WrongPageError } from './where-check.js';
 
 export interface CompanionRuntimeOptions {
   specUrl?: string;
@@ -72,6 +73,13 @@ export class CompanionRuntime {
     const tool = this.registry.getTool(name);
     if (!tool) throw new Error(`Unknown tool: ${name}`);
 
+    const whereCheck = checkWhere(tool.where);
+    if (!whereCheck.ok) {
+      const err = new WrongPageError(name, whereCheck);
+      this.options.onInvokeError?.({ tool, params, error: err });
+      throw err;
+    }
+
     try {
       await this.options.onBeforeInvoke?.({ tool, params });
       await executeSteps(tool.steps, params, {
@@ -94,6 +102,10 @@ export class CompanionRuntime {
   readResource(name: string): unknown {
     const resource = this.registry.getResource(name);
     if (!resource) throw new Error(`Unknown resource: ${name}`);
+    const whereCheck = checkWhere(resource.where);
+    if (!whereCheck.ok) {
+      throw new WrongPageError(name, whereCheck);
+    }
     return extractData(resource.extract);
   }
 

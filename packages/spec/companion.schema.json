@@ -144,6 +144,20 @@
                   }
                 ]
               },
+              "where": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "marker": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": false
+              },
               "steps": {
                 "type": "array",
                 "items": {
@@ -282,6 +296,9 @@
               },
               "schema": {
                 "$ref": "#/definitions/CompanionSpec/properties/tools/items/properties/params"
+              },
+              "where": {
+                "$ref": "#/definitions/CompanionSpec/properties/tools/items/properties/where"
               },
               "extract": {
                 "anyOf": [

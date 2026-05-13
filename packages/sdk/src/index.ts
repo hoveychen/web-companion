@@ -38,3 +38,18 @@ export {
   attachCursor,
   type AttachCursorOutput,
 } from './attach-cursor.js';
+export {
+  checkWhere,
+  globMatch,
+  WrongPageError,
+  type WhereCheckResult,
+  type WhereCheckOk,
+  type WhereCheckFail,
+} from './where-check.js';
+export {
+  attachWebSocket,
+  type AttachWebSocketOptions,
+  type WebCompanionWsClient,
+  type WsState,
+  type RuntimeLike,
+} from './ws-client.js';
