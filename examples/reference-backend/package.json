@@ -1,0 +1,25 @@
+{
+  "name": "reference-backend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Reference implementation of a remote agent backend for web-companion mode 2: bare ws bridge + JWT-routed multi-user. Pairs a WebSocket server (for the page sdk) with a Streamable HTTP MCP server (for desktop MCP clients like claude code). Does NOT contain an LLM — the desktop client is the agent.",
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "sign-token": "tsx src/sign-token.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@web-companion/spec": "workspace:^",
+    "jsonwebtoken": "^9.0.2",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^25.7.0",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.21.0"
+  }
+}
