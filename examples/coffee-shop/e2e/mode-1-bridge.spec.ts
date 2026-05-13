@@ -93,7 +93,7 @@ test.describe('Coffee shop · mode 1 (local-bridge) end-to-end', () => {
 
     // tools/list should now include namespaced entries from this session.
     const listRes = await mcpClient.listTools();
-    const addToCartName = `${namespace!}:add_to_cart`;
+    const addToCartName = `${namespace!}:cart.add_to_cart`;
     expect(listRes.tools.map((t) => t.name)).toContain(addToCartName);
 
     // Drive the tool through the bridge → ws → sdk → DOM dispatch.
@@ -113,7 +113,7 @@ test.describe('Coffee shop · mode 1 (local-bridge) end-to-end', () => {
 
     // The resource path also roundtrips: read the cart resource and
     // verify the extracted data contains the latte we just added.
-    const resourceName = `${namespace!}:read_cart`;
+    const resourceName = `${namespace!}:read_cart.cart`;
     const cartRes = await mcpClient.callTool({
       name: resourceName,
       arguments: {},

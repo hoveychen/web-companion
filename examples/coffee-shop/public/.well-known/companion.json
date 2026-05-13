@@ -1,140 +1,29 @@
 {
-  "version": "0.1",
-  "tools": [
+  "version": "0.2",
+  "modules": [
     {
-      "name": "add_to_cart",
-      "description": "把一杯咖啡加入购物车。参数 id 是咖啡 SKU，可选 latte / mocha / americano / cappuccino。",
-      "params": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "description": "咖啡 SKU",
-            "enum": ["latte", "mocha", "americano", "cappuccino"]
-          }
-        },
-        "required": ["id"]
-      },
-      "steps": [
-        { "type": "click", "target": "[data-ai-tool='add-cart-{id}']" }
-      ]
-    },
-    {
-      "name": "remove_from_cart",
-      "description": "把购物车里的某杯咖啡移除。参数 id 是要移除的咖啡 SKU。",
-      "params": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "description": "要移除的咖啡 SKU"
-          }
-        },
-        "required": ["id"]
-      },
-      "steps": [
-        { "type": "click", "target": "[data-ai-tool='remove-cart-{id}']" }
-      ]
-    },
-    {
-      "name": "checkout",
-      "description": "结账,下单当前购物车里的全部咖啡。",
-      "steps": [
-        { "type": "click", "target": "[data-ai-tool='checkout']" }
-      ]
+      "name": "cart",
+      "url": "./companion/cart.json",
+      "description": "购物车 + 结账流。当页面挂载 [data-ai-view='cart'] 时激活。",
+      "where": { "marker": "[data-ai-view='cart']" }
     },
     {
       "name": "search",
-      "description": "在菜单里搜索 query 关键词（id 或中文名都匹配）。完整三步：fill 输入框 → click 提交按钮 → wait_for 结果区出现。",
-      "params": {
-        "type": "object",
-        "properties": {
-          "query": {
-            "type": "string",
-            "description": "搜索关键词，例如 拿铁 / mocha / 咖啡"
-          }
-        },
-        "required": ["query"]
-      },
-      "steps": [
-        { "type": "fill",     "target": "[data-ai='search-input']", "value": "{query}" },
-        { "type": "click",    "target": "[data-ai-tool='search-submit']" },
-        { "type": "wait_for", "target": "[data-ai='search-results']", "timeoutMs": 3000 }
-      ]
-    }
-  ],
-  "resources": [
-    {
-      "name": "cart",
-      "description": "当前购物车里的所有商品。每个商品有 id, name, price。",
-      "schema": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "id": { "type": "string" },
-            "name": { "type": "string" },
-            "price": { "type": "string" }
-          }
-        }
-      },
-      "extract": {
-        "type": "list",
-        "selector": "[data-ai='cart-item']",
-        "fields": {
-          "id":    { "from": "attr",  "attr": "data-id" },
-          "name":  { "from": "text",  "selector": "[data-ai='item-name']" },
-          "price": { "from": "text",  "selector": "[data-ai='item-price']" }
-        }
-      }
+      "url": "./companion/search.json",
+      "description": "商品搜索流。当页面挂载 [data-ai-view='search'] 时激活。",
+      "where": { "marker": "[data-ai-view='search']" }
     },
     {
-      "name": "search_results",
-      "description": "上一次搜索的命中结果。每项有 id, name, price。",
-      "schema": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "id": { "type": "string" },
-            "name": { "type": "string" },
-            "price": { "type": "string" }
-          }
-        }
-      },
-      "extract": {
-        "type": "list",
-        "selector": "[data-ai='search-result-item']",
-        "fields": {
-          "id":    { "from": "attr",  "attr": "data-id" },
-          "name":  { "from": "text",  "selector": "[data-ai='result-name']" },
-          "price": { "from": "text",  "selector": "[data-ai='result-price']" }
-        }
-      }
+      "name": "account",
+      "url": "./companion/account.json",
+      "description": "用户账户管理流（演示用 stub UI）。挂载 [data-ai-view='account'] 时激活。",
+      "where": { "marker": "[data-ai-view='account']" }
     },
     {
-      "name": "menu",
-      "description": "咖啡店当前在售的菜单。每项有 id, name, price。",
-      "schema": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "id": { "type": "string" },
-            "name": { "type": "string" },
-            "price": { "type": "string" }
-          }
-        }
-      },
-      "extract": {
-        "type": "list",
-        "selector": "[data-ai='menu-item']",
-        "fields": {
-          "id":    { "from": "attr",  "attr": "data-id" },
-          "name":  { "from": "text",  "selector": "[data-ai='menu-name']" },
-          "price": { "from": "text",  "selector": "[data-ai='menu-price']" }
-        }
-      }
+      "name": "support",
+      "url": "./companion/support.json",
+      "description": "客服工单流（演示用 stub UI）。挂载 [data-ai-view='support'] 时激活。",
+      "where": { "marker": "[data-ai-view='support']" }
     }
   ]
 }

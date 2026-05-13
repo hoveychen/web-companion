@@ -1,0 +1,63 @@
+{
+  "version": "0.2",
+  "tools": [
+    {
+      "name": "open_ticket",
+      "description": "演示用：在 stub 客服面板提交一条工单，subject 为参数。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "工单标题"
+          }
+        },
+        "required": ["subject"]
+      },
+      "steps": [
+        { "type": "fill",  "target": "[data-ai='support-subject-input']", "value": "{subject}" },
+        { "type": "click", "target": "[data-ai-tool='support-open']" }
+      ]
+    },
+    {
+      "name": "close_ticket",
+      "description": "演示用：关闭 stub 面板里上一条工单。",
+      "steps": [
+        { "type": "click", "target": "[data-ai-tool='support-close']" }
+      ]
+    },
+    {
+      "name": "list_tickets",
+      "description": "演示用：刷新 stub 面板里的工单列表。",
+      "steps": [
+        { "type": "click", "target": "[data-ai-tool='support-refresh']" }
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "name": "tickets",
+      "description": "演示用：当前 stub 面板里展示的工单列表。",
+      "schema": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id":      { "type": "string" },
+            "subject": { "type": "string" },
+            "status":  { "type": "string" }
+          }
+        }
+      },
+      "extract": {
+        "type": "list",
+        "selector": "[data-ai='support-ticket']",
+        "fields": {
+          "id":      { "from": "attr", "attr": "data-id" },
+          "subject": { "from": "text", "selector": "[data-ai='ticket-subject']" },
+          "status":  { "from": "text", "selector": "[data-ai='ticket-status']" }
+        }
+      }
+    }
+  ]
+}

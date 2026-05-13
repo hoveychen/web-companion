@@ -1,0 +1,65 @@
+{
+  "version": "0.2",
+  "tools": [
+    {
+      "name": "login",
+      "description": "演示用：模拟用户登录（点 stub 面板的登录按钮，立即翻成已登录态）。",
+      "steps": [
+        { "type": "click", "target": "[data-ai-tool='account-login']" }
+      ]
+    },
+    {
+      "name": "logout",
+      "description": "演示用：从 stub 账户面板登出。",
+      "steps": [
+        { "type": "click", "target": "[data-ai-tool='account-logout']" }
+      ]
+    },
+    {
+      "name": "view_orders",
+      "description": "演示用：打开账户面板里的订单列表 stub。",
+      "steps": [
+        { "type": "click", "target": "[data-ai-tool='account-orders']" }
+      ]
+    },
+    {
+      "name": "update_profile",
+      "description": "演示用：把 stub 账户面板的昵称改成 displayName 参数。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": "string",
+            "description": "新的展示昵称"
+          }
+        },
+        "required": ["displayName"]
+      },
+      "steps": [
+        { "type": "fill",  "target": "[data-ai='account-name-input']", "value": "{displayName}" },
+        { "type": "click", "target": "[data-ai-tool='account-save-name']" }
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "name": "profile",
+      "description": "演示用：当前账户面板里展示的账户信息。",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "name":  { "type": "string" },
+          "email": { "type": "string" }
+        }
+      },
+      "extract": {
+        "type": "single",
+        "selector": "[data-ai='account-panel']",
+        "fields": {
+          "name":  { "from": "text", "selector": "[data-ai='account-name']" },
+          "email": { "from": "text", "selector": "[data-ai='account-email']" }
+        }
+      }
+    }
+  ]
+}

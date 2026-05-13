@@ -1,0 +1,73 @@
+{
+  "version": "0.2",
+  "tools": [
+    {
+      "name": "add_to_cart",
+      "description": "把一杯咖啡加入购物车。参数 id 是咖啡 SKU，可选 latte / mocha / americano / cappuccino。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "咖啡 SKU",
+            "enum": ["latte", "mocha", "americano", "cappuccino"]
+          }
+        },
+        "required": ["id"]
+      },
+      "steps": [
+        { "type": "click", "target": "[data-ai-tool='add-cart-{id}']" }
+      ]
+    },
+    {
+      "name": "remove_from_cart",
+      "description": "把购物车里的某杯咖啡移除。参数 id 是要移除的咖啡 SKU。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "要移除的咖啡 SKU"
+          }
+        },
+        "required": ["id"]
+      },
+      "steps": [
+        { "type": "click", "target": "[data-ai-tool='remove-cart-{id}']" }
+      ]
+    },
+    {
+      "name": "checkout",
+      "description": "结账,下单当前购物车里的全部咖啡。",
+      "steps": [
+        { "type": "click", "target": "[data-ai-tool='checkout']" }
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "name": "cart",
+      "description": "当前购物车里的所有商品。每个商品有 id, name, price。",
+      "schema": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "name": { "type": "string" },
+            "price": { "type": "string" }
+          }
+        }
+      },
+      "extract": {
+        "type": "list",
+        "selector": "[data-ai='cart-item']",
+        "fields": {
+          "id":    { "from": "attr",  "attr": "data-id" },
+          "name":  { "from": "text",  "selector": "[data-ai='item-name']" },
+          "price": { "from": "text",  "selector": "[data-ai='item-price']" }
+        }
+      }
+    }
+  ]
+}

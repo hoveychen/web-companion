@@ -257,26 +257,16 @@ export class BridgeWsServer {
   private handleConnection(ws: WebSocket): void {
     let bound: InternalSession | null = null;
     let pendingHello = true;
+    // Messages that arrive in the same tcp chunk as session/hello can be
+    // emitted synchronously while bindSession is still resolving; buffer
+    // them and replay once the session is bound (or drop them if the
+    // bind was rejected).
+    const pendingQueue: Array<Record<string, unknown>> = [];
 
-    ws.on('message', (raw) => {
-      let msg: Record<string, unknown>;
-      try {
-        msg = JSON.parse(raw.toString());
-      } catch {
-        return;
-      }
+    const apply = (msg: Record<string, unknown>): void => {
+      if (!bound) return;
       const type = msg['type'];
       if (typeof type !== 'string') return;
-
-      if (type === 'session/hello' && pendingHello) {
-        pendingHello = false;
-        void this.bindSession(ws, msg).then((session) => {
-          bound = session;
-        });
-        return;
-      }
-      if (!bound) return; // ignore until hello has resolved
-
       switch (type) {
         case 'tools/list':
           bound.tools = (msg['tools'] as ToolSpec[]) ?? [];
@@ -295,7 +285,6 @@ export class BridgeWsServer {
                 )
               : [],
           };
-          // Only notify if the filter result could actually have changed.
           if (!sameState(bound.pageState, next)) {
             bound.pageState = next;
             this.notifyCatalogChanged();
@@ -307,11 +296,36 @@ export class BridgeWsServer {
           this.deliverResponse(msg);
           break;
         case 'session/navigating':
-          // Hint to grace logic: a navigation is imminent, hold the session.
-          // Implementation already covered by close-handler grace period;
-          // marker kept for forward-compat.
           break;
       }
+    };
+
+    ws.on('message', (raw) => {
+      let msg: Record<string, unknown>;
+      try {
+        msg = JSON.parse(raw.toString());
+      } catch {
+        return;
+      }
+      const type = msg['type'];
+      if (typeof type !== 'string') return;
+
+      if (type === 'session/hello' && pendingHello) {
+        pendingHello = false;
+        void this.bindSession(ws, msg).then((session) => {
+          bound = session;
+          if (session) {
+            for (const queued of pendingQueue) apply(queued);
+          }
+          pendingQueue.length = 0;
+        });
+        return;
+      }
+      if (!bound) {
+        pendingQueue.push(msg);
+        return;
+      }
+      apply(msg);
     });
 
     ws.on('close', () => {

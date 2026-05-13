@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type CSSProperties } from 'react';
+import { useCallback, useMemo, useState, type CSSProperties } from 'react';
 import {
   Companion,
   createAnthropicDecider,
@@ -12,6 +12,19 @@ import { cartStore, useCart, MENU, searchStore, useSearch } from './cart-store.j
 export function App() {
   const items = useCart();
   const search = useSearch();
+
+  // v0.4 demo: each fake flow's stub panel can be toggled to remove its
+  // `data-ai-view` marker. The sdk's PageStateTracker notices the
+  // mutation and pushes `page/changed`; the bridge / reference-backend
+  // re-filter the catalog so the agent stops seeing the flow's tools.
+  const [showAccount, setShowAccount] = useState(true);
+  const [showSupport, setShowSupport] = useState(true);
+  const [accountName, setAccountName] = useState('Hovey');
+  const [accountLoggedIn, setAccountLoggedIn] = useState(true);
+  const [supportTickets, setSupportTickets] = useState<
+    Array<{ id: string; subject: string; status: 'open' | 'closed' }>
+  >([]);
+  const [supportSubject, setSupportSubject] = useState('');
 
   // Mode-2 switch: when both VITE_BACKEND_URL and VITE_USER_TOKEN are set,
   // mount the headless <Sidecar/> instead of the in-page <Companion> sidebar.
@@ -54,7 +67,7 @@ export function App() {
         </p>
       </header>
 
-      <section style={searchSectionStyle}>
+      <section style={searchSectionStyle} data-ai-view="search">
         <h2 style={sectionTitle}>搜索</h2>
         <div style={searchRowStyle}>
           <input
@@ -143,7 +156,7 @@ export function App() {
           </div>
         </section>
 
-        <aside style={cartSectionStyle}>
+        <aside style={cartSectionStyle} data-ai-view="cart">
           <h2 style={sectionTitle}>购物车</h2>
           {items.length === 0 ? (
             <p style={{ opacity: 0.5, fontSize: 13 }}>购物车空空如也</p>
@@ -192,6 +205,168 @@ export function App() {
           )}
         </aside>
       </main>
+
+      {/* Stub demo flows — bring tool / resource counts up so v0.4 filter +
+          meta tools have something to differentiate. Each flow can be
+          toggled off; removing the [data-ai-view='...'] marker makes the
+          PageStateTracker push a `page/changed`, and the bridge /
+          reference-backend immediately drops the flow's tools from
+          `tools/list`. */}
+      <section style={stubRowStyle}>
+        <button
+          type="button"
+          onClick={() => setShowAccount((v) => !v)}
+          style={togglerStyle}
+        >
+          {showAccount ? '关闭' : '打开'} account flow
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowSupport((v) => !v)}
+          style={togglerStyle}
+        >
+          {showSupport ? '关闭' : '打开'} support flow
+        </button>
+      </section>
+
+      {showAccount && (
+        <section
+          data-ai-view="account"
+          data-ai="account-panel"
+          style={stubPanelStyle}
+        >
+          <h2 style={sectionTitle}>账户 (stub)</h2>
+          <p style={{ margin: 0, fontSize: 13, opacity: 0.65 }}>
+            <span data-ai="account-name">{accountName}</span> ·{' '}
+            <span data-ai="account-email">hovey@example.com</span> ·{' '}
+            {accountLoggedIn ? 'logged in' : 'logged out'}
+          </p>
+          <div style={stubControlsStyle}>
+            <input
+              type="text"
+              value={accountName}
+              onChange={(e) => setAccountName(e.target.value)}
+              data-ai="account-name-input"
+              style={stubInputStyle}
+              placeholder="昵称"
+            />
+            <button
+              type="button"
+              data-ai-tool="account-save-name"
+              onClick={() => setAccountName((n) => n.trim() || 'Hovey')}
+              style={stubBtnStyle}
+            >
+              保存
+            </button>
+            <button
+              type="button"
+              data-ai-tool="account-login"
+              onClick={() => setAccountLoggedIn(true)}
+              style={stubBtnStyle}
+            >
+              登录
+            </button>
+            <button
+              type="button"
+              data-ai-tool="account-logout"
+              onClick={() => setAccountLoggedIn(false)}
+              style={stubBtnStyle}
+            >
+              登出
+            </button>
+            <button
+              type="button"
+              data-ai-tool="account-orders"
+              onClick={() => undefined}
+              style={stubBtnStyle}
+            >
+              查看订单
+            </button>
+          </div>
+        </section>
+      )}
+
+      {showSupport && (
+        <section
+          data-ai-view="support"
+          data-ai="support-panel"
+          style={stubPanelStyle}
+        >
+          <h2 style={sectionTitle}>客服 (stub)</h2>
+          <div style={stubControlsStyle}>
+            <input
+              type="text"
+              value={supportSubject}
+              onChange={(e) => setSupportSubject(e.target.value)}
+              data-ai="support-subject-input"
+              style={stubInputStyle}
+              placeholder="工单标题"
+            />
+            <button
+              type="button"
+              data-ai-tool="support-open"
+              onClick={() => {
+                const subject = supportSubject.trim();
+                if (!subject) return;
+                setSupportTickets((prev) => [
+                  ...prev,
+                  { id: `t-${prev.length + 1}`, subject, status: 'open' },
+                ]);
+                setSupportSubject('');
+              }}
+              style={stubBtnStyle}
+            >
+              提交
+            </button>
+            <button
+              type="button"
+              data-ai-tool="support-close"
+              onClick={() =>
+                setSupportTickets((prev) =>
+                  prev.length === 0
+                    ? prev
+                    : prev.map((t, i) =>
+                        i === prev.length - 1 ? { ...t, status: 'closed' } : t,
+                      ),
+                )
+              }
+              style={stubBtnStyle}
+            >
+              关闭最近
+            </button>
+            <button
+              type="button"
+              data-ai-tool="support-refresh"
+              onClick={() => undefined}
+              style={stubBtnStyle}
+            >
+              刷新列表
+            </button>
+          </div>
+          <ul style={{ ...cartListStyle, marginTop: 8 }}>
+            {supportTickets.length === 0 ? (
+              <li style={{ opacity: 0.5, fontSize: 13 }}>暂无工单</li>
+            ) : (
+              supportTickets.map((t) => (
+                <li
+                  key={t.id}
+                  data-ai="support-ticket"
+                  data-id={t.id}
+                  style={cartRowStyle}
+                >
+                  <span data-ai="ticket-subject">{t.subject}</span>
+                  <span
+                    style={{ marginLeft: 'auto', opacity: 0.6, fontSize: 12 }}
+                    data-ai="ticket-status"
+                  >
+                    {t.status}
+                  </span>
+                </li>
+              ))
+            )}
+          </ul>
+        </section>
+      )}
 
       {useSidecar ? (
         <Sidecar
@@ -342,6 +517,51 @@ const totalRow: CSSProperties = {
   borderTop: '1px solid rgba(0,0,0,0.1)',
   marginBottom: 12,
   fontSize: 13,
+};
+const stubRowStyle: CSSProperties = {
+  display: 'flex',
+  gap: 8,
+  margin: '24px 0 12px',
+};
+const togglerStyle: CSSProperties = {
+  background: 'rgba(0,0,0,0.06)',
+  color: 'rgb(38 38 38)',
+  border: '1px solid rgba(0,0,0,0.12)',
+  borderRadius: 8,
+  padding: '6px 12px',
+  fontSize: 13,
+  cursor: 'pointer',
+};
+const stubPanelStyle: CSSProperties = {
+  background: 'white',
+  borderRadius: 12,
+  padding: 16,
+  marginBottom: 16,
+  boxShadow: '0 6px 20px rgba(0,0,0,0.04)',
+};
+const stubControlsStyle: CSSProperties = {
+  display: 'flex',
+  gap: 6,
+  marginTop: 8,
+  flexWrap: 'wrap',
+};
+const stubInputStyle: CSSProperties = {
+  flex: '0 0 160px',
+  border: '1px solid rgba(0,0,0,0.12)',
+  borderRadius: 6,
+  padding: '6px 10px',
+  fontSize: 13,
+  fontFamily: 'inherit',
+  outline: 'none',
+};
+const stubBtnStyle: CSSProperties = {
+  background: 'rgb(99 102 241)',
+  color: 'white',
+  border: 'none',
+  borderRadius: 6,
+  padding: '6px 10px',
+  fontSize: 13,
+  cursor: 'pointer',
 };
 const checkoutBtn: CSSProperties = {
   width: '100%',

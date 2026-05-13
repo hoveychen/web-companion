@@ -68,14 +68,14 @@ test.describe('Coffee shop · mode 2 (reference-backend) end-to-end', () => {
     // `alice:read_<resourceName>`.
     const listRes = await mcpClient.listTools();
     const names = listRes.tools.map((t) => t.name);
-    expect(names).toContain('alice:add_to_cart');
-    expect(names).toContain('alice:read_cart');
+    expect(names).toContain('alice:cart.add_to_cart');
+    expect(names).toContain('alice:read_cart.cart');
 
     // Invoke add_to_cart over MCP HTTP. The reference-backend looks up
     // alice's ws session, sends `tools/call` down, the sdk executes the
     // DSL click against the actual mocha button, real onClick fires.
     const callRes = await mcpClient.callTool({
-      name: 'alice:add_to_cart',
+      name: 'alice:cart.add_to_cart',
       arguments: { id: 'mocha' },
     });
     expect(callRes.isError ?? false).toBe(false);
@@ -91,12 +91,58 @@ test.describe('Coffee shop · mode 2 (reference-backend) end-to-end', () => {
 
     // Round-trip the resource over HTTP as well.
     const cartRes = await mcpClient.callTool({
-      name: 'alice:read_cart',
+      name: 'alice:read_cart.cart',
       arguments: {},
     });
     const cartText =
       (cartRes.content as Array<{ type: string; text?: string }> | undefined)
         ?.find((c) => c.type === 'text')?.text ?? '[]';
     expect(cartText).toContain('mocha');
+  });
+
+  test('v0.4 filter: closing the account stub panel removes its tools from tools/list', async ({
+    page,
+  }) => {
+    if (!mcpClient) throw new Error('mcpClient not initialized');
+
+    await page.goto('/');
+    // Give the sdk a beat to send tools/list + initial page/changed.
+    await wait(300);
+
+    const beforeNames = (await mcpClient.listTools()).tools.map((t) => t.name);
+    expect(beforeNames).toContain('alice:account.login');
+    expect(beforeNames).toContain('alice:account.update_profile');
+
+    // Toggle the account stub off — removes [data-ai-view='account'] from
+    // the DOM, PageStateTracker pushes page/changed, the backend
+    // re-filters and sends tools_list_changed.
+    await page
+      .locator('button', { hasText: '关闭 account flow' })
+      .click();
+    await wait(200);
+
+    const afterNames = (await mcpClient.listTools()).tools.map((t) => t.name);
+    expect(afterNames).not.toContain('alice:account.login');
+    expect(afterNames).not.toContain('alice:account.update_profile');
+    // cart / search flows still active (their markers are still mounted).
+    expect(afterNames).toContain('alice:cart.add_to_cart');
+
+    // `_meta.scope: 'all'` brings the full catalog back regardless of
+    // pageState — agents can still see what's available when navigated
+    // away.
+    const allRes = await mcpClient.request(
+      {
+        method: 'tools/list',
+        params: { _meta: { scope: 'all' } },
+      },
+      // The MCP SDK's untyped request path needs the result schema; use
+      // a permissive one (just confirms shape via runtime fields).
+      ((await import('@modelcontextprotocol/sdk/types.js')) as typeof import('@modelcontextprotocol/sdk/types.js'))
+        .ListToolsResultSchema,
+    );
+    const allNames = (
+      allRes as { tools: Array<{ name: string }> }
+    ).tools.map((t) => t.name);
+    expect(allNames).toContain('alice:account.login');
   });
 });

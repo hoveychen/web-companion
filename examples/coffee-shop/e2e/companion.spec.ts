@@ -35,7 +35,7 @@ test.describe('Coffee shop · Companion demo end-to-end', () => {
     const cartRegion = page.locator('aside').filter({ hasText: '购物车' });
     await expect(cartRegion.getByText('摩卡', { exact: true })).toBeVisible({ timeout: 5_000 });
 
-    const decisionLog = page.locator('text=/匹配到 tool "add_to_cart"/');
+    const decisionLog = page.locator('text=/匹配到 tool "cart\\.add_to_cart"/');
     await expect(decisionLog).toBeVisible();
   });
 
@@ -60,7 +60,7 @@ test.describe('Coffee shop · Companion demo end-to-end', () => {
     await page.goto('/');
     await expect(page.locator('text=ready')).toBeVisible({ timeout: 10_000 });
 
-    const subChip = page.locator('button', { hasText: 'add_to_cart · mocha' });
+    const subChip = page.locator('button', { hasText: 'cart.add_to_cart · mocha' });
     await expect(subChip).toBeVisible();
     await subChip.click();
 
