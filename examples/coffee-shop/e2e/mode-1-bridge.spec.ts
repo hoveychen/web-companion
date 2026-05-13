@@ -123,4 +123,89 @@ test.describe('Coffee shop · mode 1 (local-bridge) end-to-end', () => {
         ?.find((c) => c.type === 'text')?.text ?? '[]';
     expect(cartText).toContain('mocha');
   });
+
+  test('v0.4 meta tools: companion_pages / _flows / _tools surface flow info', async ({
+    page,
+  }) => {
+    if (!mcpClient) throw new Error('mcpClient not initialized');
+
+    await page.goto('/');
+    // Wait for sdk → bridge handshake.
+    let ready = false;
+    for (let i = 0; i < 30 && !ready; i++) {
+      const res = await mcpClient.callTool({
+        name: 'companion_list_sessions',
+        arguments: {},
+      });
+      const text =
+        (res.content as Array<{ type: string; text?: string }> | undefined)
+          ?.find((c) => c.type === 'text')?.text ?? '';
+      try {
+        const list = JSON.parse(text) as Array<{
+          origin: string;
+          toolCount: number;
+        }>;
+        if (list.some((s) => s.origin === COFFEE_ORIGIN && s.toolCount > 0)) {
+          ready = true;
+        }
+      } catch {
+        /* not yet */
+      }
+      if (!ready) await wait(100);
+    }
+    expect(ready, 'bridge never saw the session').toBe(true);
+
+    // companion_pages — one entry per session, currentFlows reflects the
+    // page's mounted markers.
+    const pagesRes = await mcpClient.callTool({
+      name: 'companion_pages',
+      arguments: {},
+    });
+    const pagesText =
+      (pagesRes.content as Array<{ type: string; text?: string }> | undefined)
+        ?.find((c) => c.type === 'text')?.text ?? '[]';
+    const pages = JSON.parse(pagesText) as Array<{
+      origin: string;
+      currentFlows: string[];
+    }>;
+    const pageEntry = pages.find((p) => p.origin === COFFEE_ORIGIN);
+    expect(pageEntry, 'page entry present').toBeTruthy();
+    expect(pageEntry!.currentFlows).toEqual(
+      expect.arrayContaining(['cart', 'search', 'account', 'support']),
+    );
+
+    // companion_flows — every flow reported with toolCount + active flag.
+    const flowsRes = await mcpClient.callTool({
+      name: 'companion_flows',
+      arguments: {},
+    });
+    const flowsText =
+      (flowsRes.content as Array<{ type: string; text?: string }> | undefined)
+        ?.find((c) => c.type === 'text')?.text ?? '[]';
+    const flows = JSON.parse(flowsText) as Array<{
+      name: string;
+      toolCount: number;
+      active: boolean;
+    }>;
+    const cartFlow = flows.find((f) => f.name === 'cart');
+    expect(cartFlow, 'cart flow present').toBeTruthy();
+    expect(cartFlow!.toolCount).toBe(3);
+    expect(cartFlow!.active).toBe(true);
+
+    // companion_tools(flow='cart') — drill in, ignores pageState.
+    const toolsRes = await mcpClient.callTool({
+      name: 'companion_tools',
+      arguments: { flow: 'cart' },
+    });
+    const toolsText =
+      (toolsRes.content as Array<{ type: string; text?: string }> | undefined)
+        ?.find((c) => c.type === 'text')?.text ?? '[]';
+    const cartTools = JSON.parse(toolsText) as Array<{ name: string }>;
+    const cartToolNames = cartTools.map((t) => t.name).sort();
+    expect(cartToolNames).toEqual([
+      'cart.add_to_cart',
+      'cart.checkout',
+      'cart.remove_from_cart',
+    ]);
+  });
 });

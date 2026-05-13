@@ -145,4 +145,65 @@ test.describe('Coffee shop · mode 2 (reference-backend) end-to-end', () => {
     ).tools.map((t) => t.name);
     expect(allNames).toContain('alice:account.login');
   });
+
+  test('v0.4 meta tools: companion_pages / _flows / _tools surface per-user flow info', async ({
+    page,
+  }) => {
+    if (!mcpClient) throw new Error('mcpClient not initialized');
+
+    await page.goto('/');
+    // Wait for the backend to register the user's tools.
+    for (let i = 0; i < 30; i++) {
+      const r = await fetch('http://127.0.0.1:3001/health');
+      const body = (await r.json()) as {
+        users: Array<{ userId: string; tools: number }>;
+      };
+      const alice = body.users.find((u) => u.userId === 'alice');
+      if (alice && alice.tools > 0) break;
+      await wait(100);
+    }
+
+    // companion_pages — scalar (one session per user on backend).
+    const pagesRes = await mcpClient.callTool({
+      name: 'companion_pages',
+      arguments: {},
+    });
+    const pagesText =
+      (pagesRes.content as Array<{ type: string; text?: string }> | undefined)
+        ?.find((c) => c.type === 'text')?.text ?? '{}';
+    const pages = JSON.parse(pagesText) as {
+      currentFlows: string[];
+    };
+    expect(pages.currentFlows).toEqual(
+      expect.arrayContaining(['cart', 'search', 'account', 'support']),
+    );
+
+    // companion_flows — every flow + active flag.
+    const flowsRes = await mcpClient.callTool({
+      name: 'companion_flows',
+      arguments: {},
+    });
+    const flowsText =
+      (flowsRes.content as Array<{ type: string; text?: string }> | undefined)
+        ?.find((c) => c.type === 'text')?.text ?? '[]';
+    const flows = JSON.parse(flowsText) as Array<{
+      name: string;
+      toolCount: number;
+      active: boolean;
+    }>;
+    const cartFlow = flows.find((f) => f.name === 'cart');
+    expect(cartFlow!.toolCount).toBe(3);
+    expect(cartFlow!.active).toBe(true);
+
+    // companion_tools(flow='search') — drill into search flow.
+    const toolsRes = await mcpClient.callTool({
+      name: 'companion_tools',
+      arguments: { flow: 'search' },
+    });
+    const toolsText =
+      (toolsRes.content as Array<{ type: string; text?: string }> | undefined)
+        ?.find((c) => c.type === 'text')?.text ?? '[]';
+    const searchTools = JSON.parse(toolsText) as Array<{ name: string }>;
+    expect(searchTools.map((t) => t.name)).toEqual(['search.search']);
+  });
 });
