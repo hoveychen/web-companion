@@ -1,4 +1,5 @@
 import type { ResourceSpec, ToolSpec } from '@web-companion/spec';
+import { PageStateTracker, type PageState } from './page-state.js';
 import { WrongPageError } from './where-check.js';
 
 /**
@@ -53,6 +54,17 @@ export function attachWebSocket(
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let intentionallyClosed = false;
 
+  // Page-state tracker: drives the v0.4 `page/changed` push so the
+  // bridge/backend can pre-filter `tools/list` by `where`. The set of
+  // known markers is derived from the catalog the runtime is serving
+  // (any marker that no capability references is irrelevant to the
+  // filter and would just waste a `querySelector` per mutation).
+  const knownMarkers = collectKnownMarkers(runtime);
+  const pageTracker = new PageStateTracker({
+    knownMarkers,
+    onChange: (next) => emitPageChanged(next),
+  });
+
   function buildUrl(): string {
     const url = new URL(options.url);
     if (options.sessionToken !== undefined) {
@@ -88,8 +100,13 @@ export function attachWebSocket(
             : '',
         tabTitle: typeof document !== 'undefined' ? document.title : '',
       });
+      // Initial page state lands BEFORE tools/list so the server side has
+      // it on hand by the time the first MCP tools/list arrives. Subsequent
+      // changes flow through `pageTracker.onChange → emitPageChanged`.
+      send({ type: 'page/changed', ...pageTracker.current });
       send({ type: 'tools/list', tools: runtime.listTools() });
       send({ type: 'resources/list', resources: runtime.listResources() });
+      pageTracker.start();
     });
 
     ws.addEventListener('message', (event) => {
@@ -97,6 +114,7 @@ export function attachWebSocket(
     });
 
     ws.addEventListener('close', () => {
+      pageTracker.stop();
       if (intentionallyClosed) {
         state = 'closed';
         return;
@@ -175,9 +193,14 @@ export function attachWebSocket(
 
   connect();
 
+  function emitPageChanged(next: PageState): void {
+    send({ type: 'page/changed', ...next });
+  }
+
   return {
     disconnect(): void {
       intentionallyClosed = true;
+      pageTracker.stop();
       if (reconnectTimer !== null) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
@@ -192,6 +215,17 @@ export function attachWebSocket(
       return sessionId;
     },
   };
+}
+
+function collectKnownMarkers(runtime: RuntimeLike): string[] {
+  const out = new Set<string>();
+  for (const t of runtime.listTools()) {
+    if (t.where?.marker) out.add(t.where.marker);
+  }
+  for (const r of runtime.listResources()) {
+    if (r.where?.marker) out.add(r.where.marker);
+  }
+  return [...out];
 }
 
 function toWireError(err: unknown): object {

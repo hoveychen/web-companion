@@ -62,3 +62,8 @@ export {
   type WsState,
   type RuntimeLike,
 } from './ws-client.js';
+export {
+  PageStateTracker,
+  type PageState,
+  type PageStateTrackerOptions,
+} from './page-state.js';
