@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:bridge": "pnpm --filter @web-companion/local-bridge build && playwright test --config=playwright.config.bridge.ts"
   },
   "dependencies": {
     "@web-companion/sidecar": "workspace:^",
@@ -17,10 +18,12 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
     "@playwright/test": "^1.60.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.0",
+    "@web-companion/local-bridge": "workspace:^",
     "vite": "^6.0.0"
   }
 }

@@ -30,6 +30,9 @@ importers:
         specifier: workspace:^
         version: link:../with-sidebar
     devDependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.0.0
+        version: 1.29.0(zod@3.25.76)
       '@playwright/test':
         specifier: ^1.60.0
         version: 1.60.0
@@ -42,6 +45,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^4.3.0
         version: 4.7.0(vite@6.4.2(@types/node@25.7.0)(tsx@4.21.0))
+      '@web-companion/local-bridge':
+        specifier: workspace:^
+        version: link:../../packages/local-bridge
       vite:
         specifier: ^6.0.0
         version: 6.4.2(@types/node@25.7.0)(tsx@4.21.0)

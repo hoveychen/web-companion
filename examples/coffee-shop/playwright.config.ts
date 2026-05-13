@@ -2,6 +2,9 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
+  // mode-1-bridge.spec.ts requires the local-bridge subprocess +
+  // VITE_BACKEND_URL env; lives in `playwright.config.bridge.ts` instead.
+  testIgnore: ['mode-1-bridge.spec.ts'],
   fullyParallel: false,
   retries: 0,
   workers: 1,

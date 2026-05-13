@@ -10,3 +10,4 @@ TASKS.md
 *.tsbuildinfo
 test-results/
 playwright-report/
+.tmp/
