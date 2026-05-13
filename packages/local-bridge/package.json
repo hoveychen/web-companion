@@ -1,0 +1,32 @@
+{
+  "name": "@web-companion/local-bridge",
+  "version": "0.3.0-pre",
+  "description": "Desktop bridge that lets a local MCP client (claude code / claw / any stdio-MCP host) drive a web-companion-enabled webpage. Pairs a localhost WebSocket server (for the page sdk to connect into) with a stdio MCP server.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "web-companion-bridge": "./dist/cli.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@web-companion/spec": "workspace:^",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.7.0",
+    "@types/ws": "^8.5.13"
+  }
+}
