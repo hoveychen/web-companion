@@ -228,7 +228,7 @@ Multi-route apps can scope a tool to a URL pattern, a DOM marker, or both:
 {
   "name": "checkout",
   "where": {
-    "url":    "**/cart",                  // optional, glob over location.href
+    "url":    "**/cart",                  // optional, glob over location.pathname+search+hash
     "marker": "[data-ai-view='cart']"     // optional, DOM marker for SPAs
   },
   "steps": [ /* ... */ ]
@@ -239,6 +239,9 @@ Both fields are AND'd; omit `where` for site-global tools. When the agent
 invokes the tool from the wrong page, the runtime throws `WrongPageError`
 with `{currentUrl, currentMarkers, expectedWhere}` so the agent can decide
 whether to navigate first.
+
+Beyond per-tool error handling, `where:` also drives **server-side
+filtering** in v0.4 — see the next section.
 
 ---
 
@@ -276,6 +279,82 @@ element. `from` options:
 
 `selector` on a field is optional — omit to read the source from the item
 element itself.
+
+---
+
+## Spec at scale (v0.2)
+
+A flat 5-tool catalog is fine for the coffee-shop demo. A real SaaS
+dashboard with 100+ flows isn't — token bloat, name collisions, and an
+agent that can't tell which tools are usable from the current page.
+
+v0.4 introduces three mechanisms, all opt-in:
+
+### 1. Modules — split the catalog across files
+
+A v0.2 index `companion.json` can declare `modules` instead of (or
+alongside) inline `tools` / `resources`:
+
+```jsonc
+{
+  "version": "0.2",
+  "modules": [
+    {
+      "name": "checkout",
+      "url":  "./companion/checkout.json",
+      "where": { "marker": "[data-ai-view='cart']" }
+    },
+    {
+      "name": "search",
+      "url":  "./companion/search.json",
+      "where": { "marker": "[data-ai-view='search']" }
+    }
+  ]
+}
+```
+
+Each module file is itself a `CompanionSpec` (v0.2, no nested modules).
+The SDK loader fetches them in parallel after the index, AND-merging
+each module's per-module `where:` into every tool/resource inside.
+
+### 2. Namespacing — `flow.tool` for free
+
+Tools declared inside a module get their flow name prefixed at the
+runtime surface: a tool named `submit` inside the `checkout` module
+becomes `checkout.submit`. The agent sees the namespaced form, but the
+raw name in the JSON file stays unqualified.
+
+`invokeTool('checkout.submit', input)` routes to the namespaced entry;
+`invokeTool('submit', input)` resolves only to a site-level tool of
+that exact name. Identifiers are validated against
+`/^[A-Za-z][A-Za-z0-9_-]*$/` — the `.` is reserved.
+
+### 3. Server-side filter + meta tools
+
+Once a catalog is split by flow with `where:` clauses, both
+[`@web-companion/local-bridge`](packages/local-bridge) and the
+[reference-backend](examples/reference-backend) automatically:
+
+- Pre-filter `tools/list` to only the entries whose `where:` matches
+  the page's current state.
+- Push `notifications/tools/list_changed` when the SDK's
+  PageStateTracker reports a navigation or marker change.
+- Accept `_meta: { "scope": "all" }` on `tools/list` as an opt-out for
+  agents that want the full catalog.
+
+Three new meta tools (`companion_pages` / `companion_flows` /
+`companion_tools`) let the agent introspect:
+
+| Meta tool | Returns |
+| --- | --- |
+| `companion_pages` | `{ currentUrl, matchedMarkers, currentFlows }` per session |
+| `companion_flows` | `[{ name, description, toolCount, resourceCount, active }]` — every flow in the catalog with an `active` flag |
+| `companion_tools` | `[{ name, description, params }]` — drill into a specific flow (optional `flow` arg) or the page-active set |
+
+So the agent's natural first move on connect becomes: call
+`companion_pages` → see "I'm on `/cart`, flow `cart` is active" → call
+`companion_tools(flow='cart')` → see just the four cart tools instead
+of all 87 in the site catalog.
 
 ---
 
@@ -317,13 +396,21 @@ file (suggestions only, doesn't mutate source).
 
 ```ts
 type CompanionSpec = {
-  version: '0.1';
-  tools?: ToolSpec[];
-  resources?: ResourceSpec[];
+  version: '0.1' | '0.2';
+  modules?: ModuleRef[];          // 0.2 only
+  tools?: ToolSpec[];             // site-level (no flow)
+  resources?: ResourceSpec[];     // site-level (no flow)
+};
+
+type ModuleRef = {
+  name: string;                   // [A-Za-z][A-Za-z0-9_-]* — becomes the flow namespace
+  url: string;                    // resolved relative to the parent spec
+  description?: string;           // shown by `companion_flows`
+  where?: WhereSpec;              // AND'd into every contained capability
 };
 
 type ToolSpec = {
-  name: string;
+  name: string;                   // identifier — no `.` (reserved for namespacing)
   description: string;
   params?: JsonSchema;
   where?: WhereSpec;
@@ -339,7 +426,7 @@ type ResourceSpec = {
 };
 
 type WhereSpec = {
-  url?: string;                   // glob over location.href
+  url?: string;                   // glob over location.pathname+search+hash
   marker?: string;                // CSS selector; presence in DOM
 };                                // at least one of url/marker required
 
@@ -365,21 +452,53 @@ A live `companion.schema.json` (draft 2019-09) is published from the spec
 package at [`packages/spec/companion.schema.json`](packages/spec/companion.schema.json)
 for editor autocomplete and external validators.
 
+### Migrating from 0.1 → 0.2
+
+The 0.2 schema is a strict superset of 0.1 — every existing 0.1 file
+keeps parsing unchanged. Opt into the new shape at your own pace:
+
+1. **Bump `version` to `'0.2'`.** Required to use the `modules` field.
+2. **For each conceptual flow, move its tools/resources into
+   `companion/<flowName>.json`.** Each module file is itself a v0.2
+   `CompanionSpec` with `modules: []` (one level deep, enforced).
+3. **Replace the moved entries in `companion.json` with a `modules`
+   ref each:**
+   ```jsonc
+   "modules": [
+     { "name": "checkout", "url": "./companion/checkout.json",
+       "where": { "marker": "[data-ai-view='cart']" } }
+   ]
+   ```
+4. **(Optional)** Add per-flow `where:` to the module ref — this is what
+   activates the server-side filter. Without it, every module's tools
+   stay site-wide.
+
+The full reference design lives in
+[`docs/v0.4-spec-at-scale.md`](docs/v0.4-spec-at-scale.md).
+
+For backwards compatibility safeguards:
+
+- A v0.1 file may **not** declare `modules` (rejected by the parser).
+- Tool/resource/module identifiers (`[A-Za-z][A-Za-z0-9_-]*`) are
+  enforced in both versions — `.` was de-facto unused, now reserved.
+- `_meta: { scope: "all" }` on `tools/list` bypasses the v0.4 filter,
+  so an agent that doesn't know about the filter still works.
+
 ---
 
 ## Packages
 
 ```
 packages/
-  spec/          @web-companion/spec          Zod schema + TS types + parser/validator + companion.schema.json
-  sdk/           @web-companion/sdk           Runtime: registry, dsl-executor, dom-extractor, cursor, where-check, ws-client
+  spec/          @web-companion/spec          Zod schema (v0.1 + v0.2) + TS types + parser/validator + companion.schema.json
+  sdk/           @web-companion/sdk           Runtime: registry, recursive-modules loader, dsl-executor, dom-extractor, cursor, where-check, ws-client, PageStateTracker, meta-tools helpers
   sidecar/       @web-companion/sidecar       Headless connector for mode 2 — React/Vue/Vanilla entries
-  local-bridge/  @web-companion/local-bridge  Mode 1 — stdio MCP ↔ ws bridge; origin allowlist; navigation grace period
+  local-bridge/  @web-companion/local-bridge  Mode 1 — stdio MCP ↔ ws bridge; origin allowlist; navigation grace; server-side filter + meta tools
   webmcp/        @web-companion/webmcp        W3C WebMCP adapter — `navigator.modelContext.registerTool` from a CompanionSpec
   annotator/     @web-companion/annotator     LLM-backed source → spec+marker suggestions; Claude Opus 4.7
 examples/
-  coffee-shop/                                vite 6 + react 19 end-to-end demo (mode 1 via local-bridge, mode 2 via sidecar + reference-backend, WebMCP via webmcp). Playwright e2e × 8.
-  reference-backend/                          Skeleton remote agent backend for mode 2: ws + JWT + MCP Streamable HTTP; agent-less by design.
+  coffee-shop/                                vite 6 + react 19 end-to-end demo (v0.2 spec, 4 modules, 11 tools / 5 resources). Three Playwright suites: default (8), mode-1 bridge (1), mode-2 backend (2).
+  reference-backend/                          Skeleton remote agent backend for mode 2: ws + JWT + MCP Streamable HTTP + v0.4 filter / meta tools; agent-less by design.
   with-sidebar/                               Demo: in-page chat sidebar (the old @web-companion/react package, repositioned in v0.3 — see its NOTE.md).
 ```
 
@@ -389,7 +508,7 @@ exercising the demo.
 
 ---
 
-## Status (v0.3)
+## Status (v0.4)
 
 | | |
 | --- | --- |
@@ -402,8 +521,12 @@ exercising the demo.
 | Mode 2 — `@web-companion/sidecar` (React / Vue / Vanilla entries) | ✅ |
 | Mode 2 — `examples/reference-backend` (ws + JWT + MCP Streamable HTTP, multi-user) | ✅ |
 | LLM-backed annotator (`@web-companion/annotator`, Claude Opus 4.7) | ✅ |
-| Playwright e2e × 8 (cursor flight, DSL dispatch, extraction, search async) | ✅ |
-| Mode 1 + Mode 2 e2e (process spawn, mock wss) | planned |
+| v0.2 spec: modules + flow namespacing + `where:` cascade | ✅ |
+| SDK `PageStateTracker` + `page/changed` wire push | ✅ |
+| Server-side `where:` filter + `notifications/tools/list_changed` | ✅ |
+| `companion_pages` / `companion_flows` / `companion_tools` meta tools | ✅ |
+| Playwright e2e (default 8/8 + mode-1 bridge 1/1 + mode-2 backend 2/2) | ✅ |
+| Annotator `--out-dir` (emit module tree from a project) | planned |
 | `@web-companion/sidecar` for Svelte / SolidJS | planned |
 
 ---

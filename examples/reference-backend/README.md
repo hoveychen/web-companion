@@ -100,24 +100,43 @@ the equivalent for your MCP client:
 }
 ```
 
-After restart, `claude code` will see these tools (assuming the coffee-shop
-page is open in a browser with `VITE_USER_TOKEN=alice`):
+After restart, `claude code` will see these tools (assuming the
+coffee-shop v0.2 demo is open in a browser with `VITE_USER_TOKEN=alice`):
 
 ```
-alice:add_to_cart       Add an item to the cart
-alice:remove_from_cart  Remove an item from the cart
-alice:checkout          Place the order
-alice:search            Search the menu
-alice:read_cart         Read resource: cart contents
-alice:read_menu         Read resource: full menu
-alice:read_search_results  …
+companion_pages         Current page state for your session
+companion_flows         All flows declared in your page's catalog
+companion_tools         Drill into a specific flow's tools
+alice:cart.add_to_cart       Add an item to the cart
+alice:cart.remove_from_cart  Remove an item from the cart
+alice:cart.checkout          Place the order
+alice:search.search          Search the menu
+alice:account.login          (stub) login
+alice:account.update_profile (stub) change display name
+alice:support.open_ticket    (stub) open a ticket
+…
+alice:read_cart.cart         Read resource: cart contents
+alice:read_search.menu       Read resource: full menu
+alice:read_search.search_results  …
 ```
 
-Calling `alice:add_to_cart` with `{"id": "mocha"}` will:
+The first three are **v0.4 meta tools** registered by this backend on
+every MCP session — they let the agent introspect what flow / page it's
+on without guessing. The rest are namespaced as `<userId>:<flow>.<tool>`
+where the flow comes from the spec's module ref.
+
+By default `tools/list` returns only the tools whose `where:` matches
+the user's current page state. Pass `_meta: { scope: "all" }` on the
+request to bypass the filter when you want the full catalog. When the
+page state changes (SDK pushes `page/changed` over ws), the backend
+sends `notifications/tools/list_changed` to every MCP session owned by
+that user.
+
+Calling `alice:cart.add_to_cart` with `{"id": "mocha"}` will:
 
 1. The MCP client POSTs `tools/call` to `/mcp`.
 2. The backend verifies the bearer JWT (userId=`alice`), looks up alice's
-   ws session, forwards `{type: 'tools/call', id: N, name: 'add_to_cart',
+   ws session, forwards `{type: 'tools/call', id: N, name: 'cart.add_to_cart',
    input: {id: 'mocha'}}` to the page.
 3. The page sdk runs the `click` step, the visible cursor flies to the
    mocha button, native React onClick fires, the cart updates.
@@ -168,8 +187,16 @@ Tool naming surfaced to the MCP client:
 
 | Surface | Pattern |
 | --- | --- |
-| Tool | `<userId>:<toolName>` |
-| Resource | `<userId>:read_<resourceName>` — modeled as a side-effect-free tool so MCP clients without `resources/*` still see it |
+| Tool (site-level) | `<userId>:<toolName>` |
+| Tool (in module) | `<userId>:<flow>.<toolName>` — v0.2 spec only |
+| Resource | `<userId>:read_<resourceName>` (or `<flow>.<resourceName>`) — modeled as a side-effect-free tool so MCP clients without `resources/*` still see it |
+| Meta tools | `companion_pages` / `companion_flows` / `companion_tools` — namespace-free, registered by this backend on every MCP session |
+
+v0.4 server-side filter: by default `tools/list` returns only tools whose
+`where:` matches the user's current page state. To bypass, pass
+`_meta: { scope: "all" }`. The backend pushes
+`notifications/tools/list_changed` to every MCP session owned by the
+user when the page state changes.
 
 ---
 
@@ -192,14 +219,20 @@ Tool naming surfaced to the MCP client:
 ```
 src/
   auth.ts        HS256 JWT verify (single function, reads REFERENCE_BACKEND_SECRET).
-  sessions.ts    In-memory SessionRegistry — one UserSession per userId, pending
-                 request id table, 30s timeout.
-  server.ts      HTTP + ws bootstrap; /health, /mcp, /ws upgrade.
+  sessions.ts    In-memory SessionRegistry — one UserSession per userId, per-session
+                 pageState cache, pending request id table, 30s timeout, per-user
+                 onCatalogChange subscription.
+  server.ts      HTTP + ws bootstrap; /health, /mcp, /ws upgrade. Consumes
+                 `page/changed` ws messages and updates the session's pageState.
   mcp-server.ts  McpHttpRouter — one MCP Server per (userId, mcp-session-id),
-                 surfaces namespaced tools + dispatches via SessionRegistry.request().
+                 surfaces namespaced tools + the three v0.4 meta tools
+                 (companion_pages / _flows / _tools), applies the
+                 `where`-filter (opt-out via `_meta.scope='all'`), and pushes
+                 notifications/tools/list_changed when SessionRegistry signals
+                 a per-user catalog event.
   sign-token.ts  CLI: `pnpm sign-token <userId> [--exp 1d]`.
 ```
 
 [sidecar]: ../../packages/sidecar
-[companion]: ../../packages/react
+[companion]: ../../examples/with-sidebar
 [sdk-readme]: ../../packages/sdk
