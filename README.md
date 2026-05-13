@@ -386,9 +386,21 @@ A typical pass over an existing React app:
 4. Write `companion.json` referencing those markers.
 
 No state-management changes. No `onClick` rewrites. The annotator is
-annotating, not refactoring. [`@web-companion/annotator`](packages/annotator)
-is a Claude Opus 4.7-based MVP that does steps 1–4 from a single `.tsx`
-file (suggestions only, doesn't mutate source).
+annotating, not refactoring.
+
+**Recommended path (v0.4): your existing AI coding agent is the
+annotator.** Read [`docs/annotator-playbook.md`](docs/annotator-playbook.md)
+— it's the framework-agnostic manual any agent (Claude Code, Cursor,
+Claw, etc.) follows to do the four steps above. Claude Code users
+can also load the bundled skill at
+[`.claude/skills/web-companion-annotate/`](.claude/skills/web-companion-annotate)
+and invoke `/web-companion-annotate <path>`.
+
+For CI / batch annotations without an interactive agent,
+[`@web-companion/annotator`](packages/annotator) is a Claude API-backed
+CLI MVP that does steps 1–4 from a single `.tsx` file (suggestions
+only, doesn't mutate source) — see its NOTE.md for when to pick which
+route.
 
 ---
 
@@ -521,12 +533,12 @@ exercising the demo.
 | Mode 2 — `@web-companion/sidecar` (React / Vue / Vanilla entries) | ✅ |
 | Mode 2 — `examples/reference-backend` (ws + JWT + MCP Streamable HTTP, multi-user) | ✅ |
 | LLM-backed annotator (`@web-companion/annotator`, Claude Opus 4.7) | ✅ |
+| Annotator playbook + Claude Code skill (`docs/annotator-playbook.md` + `.claude/skills/web-companion-annotate`) | ✅ |
 | v0.2 spec: modules + flow namespacing + `where:` cascade | ✅ |
 | SDK `PageStateTracker` + `page/changed` wire push | ✅ |
 | Server-side `where:` filter + `notifications/tools/list_changed` | ✅ |
 | `companion_pages` / `companion_flows` / `companion_tools` meta tools | ✅ |
 | Playwright e2e (default 8/8 + mode-1 bridge 1/1 + mode-2 backend 2/2) | ✅ |
-| Annotator `--out-dir` (emit module tree from a project) | planned |
 | `@web-companion/sidecar` for Svelte / SolidJS | planned |
 
 ---
