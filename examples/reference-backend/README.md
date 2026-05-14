@@ -198,6 +198,15 @@ v0.4 server-side filter: by default `tools/list` returns only tools whose
 `notifications/tools/list_changed` to every MCP session owned by the
 user when the page state changes.
 
+v0.5 adds `where.roles: string[]` AND'd into the same `passesWhere`
+check. The user-roles signal arrives inside the SDK's `page/changed`
+ws msg (sourced from `<body data-wc-user-roles>` or an explicit
+override — see [the RFC](../../docs/v0.5-auth-aware-filter.md)). This
+is purely an ergonomics filter — the backend still must enforce real
+RBAC on each tool's underlying API call. `companion_pages` echoes
+`userRoles` back to the agent so its planner can reason about which
+identity context it's in.
+
 ---
 
 ## What this is **not**

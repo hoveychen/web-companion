@@ -288,7 +288,9 @@ A flat 5-tool catalog is fine for the coffee-shop demo. A real SaaS
 dashboard with 100+ flows isn't — token bloat, name collisions, and an
 agent that can't tell which tools are usable from the current page.
 
-v0.4 introduces three mechanisms, all opt-in:
+v0.4 introduces three mechanisms (modules / namespacing /
+server-side filter) and v0.5 adds an identity axis (`where.roles`).
+All are opt-in additions inside `version: "0.2"` — no spec bump.
 
 ### 1. Modules — split the catalog across files
 
@@ -355,6 +357,33 @@ So the agent's natural first move on connect becomes: call
 `companion_pages` → see "I'm on `/cart`, flow `cart` is active" → call
 `companion_tools(flow='cart')` → see just the four cart tools instead
 of all 87 in the site catalog.
+
+### 4. Auth-aware filter (v0.5)
+
+Same `where:` clause, new optional field: `roles: string[]`. The SDK
+collects the current user's roles from
+`<body data-wc-user-roles="...">` (or `<meta>` / explicit override —
+see [the RFC][v0.5]), pushes them inside `page/changed`, and the
+bridge / backend AND the role check into the existing `passesWhere`.
+
+```jsonc
+{
+  "name": "admin",
+  "url":  "./companion/admin.json",
+  "where": {
+    "marker": "[data-ai-view='admin']",
+    "roles":  ["admin"]
+  }
+}
+```
+
+`PagesSummary` also surfaces `userRoles` so the agent can reason
+about its identity context. The full RFC, including the security
+disclosure ("this is ergonomics, not authorization — the server
+still does RBAC"), lives in
+[`docs/v0.5-auth-aware-filter.md`](docs/v0.5-auth-aware-filter.md).
+
+[v0.5]: docs/v0.5-auth-aware-filter.md
 
 ---
 
@@ -440,7 +469,8 @@ type ResourceSpec = {
 type WhereSpec = {
   url?: string;                   // glob over location.pathname+search+hash
   marker?: string;                // CSS selector; presence in DOM
-};                                // at least one of url/marker required
+  roles?: string[];               // v0.5 — user-roles intersection (ergonomics, not RBAC)
+};                                // at least one of url/marker/roles required
 
 type Step =
   | { type: 'click';    target: string }
@@ -496,21 +526,55 @@ For backwards compatibility safeguards:
 - `_meta: { scope: "all" }` on `tools/list` bypasses the v0.4 filter,
   so an agent that doesn't know about the filter still works.
 
+### Adding v0.5 role gates (still v0.2)
+
+No version bump. Drop `roles:` onto any `where:` (tool, resource, or
+module ref). Wire `<body data-wc-user-roles="...">` to your auth
+store, and the SDK does the rest:
+
+```jsonc
+// public/.well-known/companion.json
+{
+  "version": "0.2",
+  "modules": [
+    { "name": "admin", "url": "./companion/admin.json",
+      "where": { "marker": "[data-ai-view='admin']", "roles": ["admin"] } }
+  ]
+}
+```
+
+```tsx
+// In your root component
+useEffect(() => {
+  if (user.role === 'anonymous') {
+    document.body.removeAttribute('data-wc-user-roles');
+  } else {
+    document.body.setAttribute('data-wc-user-roles', user.role);
+  }
+}, [user.role]);
+```
+
+That's it. v0.4 specs continue parsing and running unchanged; new
+`roles:` fields are inert against pre-v0.5 SDKs (they just don't
+filter on it). See [`docs/v0.5-auth-aware-filter.md`](docs/v0.5-auth-aware-filter.md)
+for the full security disclosure — the filter is ergonomics, not an
+authorization gate.
+
 ---
 
 ## Packages
 
 ```
 packages/
-  spec/          @web-companion/spec          Zod schema (v0.1 + v0.2) + TS types + parser/validator + companion.schema.json
-  sdk/           @web-companion/sdk           Runtime: registry, recursive-modules loader, dsl-executor, dom-extractor, cursor, where-check, ws-client, PageStateTracker, meta-tools helpers
+  spec/          @web-companion/spec          Zod schema (v0.1 + v0.2 incl. v0.5 where.roles) + TS types + parser/validator + companion.schema.json
+  sdk/           @web-companion/sdk           Runtime: registry, recursive-modules loader (mergeWhere), dsl-executor, dom-extractor, cursor, where-check (roles), ws-client (userRoles), PageStateTracker (4-level role fallback), meta-tools helpers
   sidecar/       @web-companion/sidecar       Headless connector for mode 2 — React/Vue/Vanilla entries
-  local-bridge/  @web-companion/local-bridge  Mode 1 — stdio MCP ↔ ws bridge; origin allowlist; navigation grace; server-side filter + meta tools
+  local-bridge/  @web-companion/local-bridge  Mode 1 — stdio MCP ↔ ws bridge; origin allowlist; navigation grace; server-side filter (url+marker+roles) + meta tools
   webmcp/        @web-companion/webmcp        W3C WebMCP adapter — `navigator.modelContext.registerTool` from a CompanionSpec
   annotator/     @web-companion/annotator     LLM-backed source → spec+marker suggestions; Claude Opus 4.7
 examples/
-  coffee-shop/                                vite 6 + react 19 end-to-end demo (v0.2 spec, 4 modules, 11 tools / 5 resources). Three Playwright suites: default (8), mode-1 bridge (1), mode-2 backend (2).
-  reference-backend/                          Skeleton remote agent backend for mode 2: ws + JWT + MCP Streamable HTTP + v0.4 filter / meta tools; agent-less by design.
+  coffee-shop/                                vite 6 + react 19 end-to-end demo (v0.2 spec, 5 modules, 13 tools / 6 resources incl. v0.5 admin flow). Three Playwright suites: default (8), mode-1 bridge (2), mode-2 backend (4).
+  reference-backend/                          Skeleton remote agent backend for mode 2: ws + JWT + MCP Streamable HTTP + v0.4/v0.5 filter / meta tools; agent-less by design.
   with-sidebar/                               Demo: in-page chat sidebar (the old @web-companion/react package, repositioned in v0.3 — see its NOTE.md).
 ```
 
@@ -520,7 +584,7 @@ exercising the demo.
 
 ---
 
-## Status (v0.4)
+## Status (v0.5)
 
 | | |
 | --- | --- |
@@ -538,7 +602,9 @@ exercising the demo.
 | SDK `PageStateTracker` + `page/changed` wire push | ✅ |
 | Server-side `where:` filter + `notifications/tools/list_changed` | ✅ |
 | `companion_pages` / `companion_flows` / `companion_tools` meta tools | ✅ |
-| Playwright e2e (default 8/8 + mode-1 bridge 1/1 + mode-2 backend 2/2) | ✅ |
+| **v0.5 auth-aware filter — `where.roles[]` + `PageState.userRoles[]` + 4-source DOM fallback** | ✅ |
+| **Playbook *Auth-aware tools* section + coffee-shop `admin` worked example** | ✅ |
+| Playwright e2e (default 8/8 + mode-1 bridge 2/2 + mode-2 backend 4/4) | ✅ |
 | `@web-companion/sidecar` for Svelte / SolidJS | planned |
 
 ---
