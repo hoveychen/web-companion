@@ -1,0 +1,39 @@
+{
+  "version": "0.2",
+  "tools": [
+    {
+      "name": "delete_user",
+      "description": "演示用：模拟管理员软删除用户（点 admin 面板的「删除用户」按钮，appendlog 一行）。仅当 user-roles 含 'admin' 时 agent 才能看到。",
+      "steps": [
+        { "type": "click", "target": "[data-ai-tool='admin-delete-user']" }
+      ]
+    },
+    {
+      "name": "refund_order",
+      "description": "演示用：模拟管理员退款（点 admin 面板的「退款订单」按钮，appendlog 一行）。仅当 user-roles 含 'admin' 时 agent 才能看到。",
+      "steps": [
+        { "type": "click", "target": "[data-ai-tool='admin-refund-order']" }
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "name": "log",
+      "description": "演示用：admin 面板里最近操作的日志条目（list 抽取）。",
+      "schema": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": { "entry": { "type": "string" } }
+        }
+      },
+      "extract": {
+        "type": "list",
+        "selector": "[data-ai='admin-log-entry']",
+        "fields": {
+          "entry": { "from": "text" }
+        }
+      }
+    }
+  ]
+}

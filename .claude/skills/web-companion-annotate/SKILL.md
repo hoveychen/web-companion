@@ -13,15 +13,21 @@ referenced markers resolve.
 
 ## Required reading
 
-Before writing anything, read these two files in this order:
+Before writing anything, read these files in this order:
 
 1. **`docs/annotator-playbook.md`** — the framework-agnostic manual.
-   Defines the safety properties, the v0.2 spec shape, and the 7-step
-   pass over a project. Treat it as authoritative — if this skill and
-   the playbook disagree, the playbook wins.
+   Defines the safety properties, the v0.2 spec shape, the 7-step
+   pass over a project, and (v0.5+) the *Auth-aware tools* section
+   on role gating. Treat it as authoritative — if this skill and the
+   playbook disagree, the playbook wins.
 2. **`docs/v0.4-spec-at-scale.md`** — wire-protocol-level details on
    modules, namespacing, server-side filter, and meta tools. Mostly
    reference; consult when you need to confirm a schema detail.
+3. **`docs/v0.5-auth-aware-filter.md`** — RFC covering the
+   `where.roles` field, `PageState.userRoles` collection, and the
+   security disclosure (the filter is *ergonomics*, not an
+   authorization boundary). Only consult this when the project has
+   role-gated UI; for public-only apps the playbook section is enough.
 
 If `docs/annotator-playbook.md` isn't present in the current
 workspace, the user probably cloned a downstream of web-companion

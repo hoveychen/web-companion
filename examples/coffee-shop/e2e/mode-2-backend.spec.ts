@@ -206,4 +206,60 @@ test.describe('Coffee shop · mode 2 (reference-backend) end-to-end', () => {
     const searchTools = JSON.parse(toolsText) as Array<{ name: string }>;
     expect(searchTools.map((t) => t.name)).toEqual(['search.search']);
   });
+
+  test('v0.5 auth filter: switching role toggles admin.* visibility in tools/list', async ({
+    page,
+  }) => {
+    if (!mcpClient) throw new Error('mcpClient not initialized');
+
+    await page.goto('/');
+    await wait(300);
+
+    // Default role is anonymous — admin tools should not appear.
+    const anonymousNames = (await mcpClient.listTools()).tools.map(
+      (t) => t.name,
+    );
+    expect(anonymousNames).not.toContain('alice:admin.delete_user');
+    expect(anonymousNames).not.toContain('alice:admin.refund_order');
+    // Cart flow still here (no role gate).
+    expect(anonymousNames).toContain('alice:cart.add_to_cart');
+
+    // Switch to admin role — body data-wc-user-roles changes, page/changed
+    // fires, backend re-filters, MCP pushes tools_list_changed.
+    await page
+      .locator('button[data-ai-tool="set-role-admin"]')
+      .click();
+    await wait(200);
+
+    const adminNames = (await mcpClient.listTools()).tools.map((t) => t.name);
+    expect(adminNames).toContain('alice:admin.delete_user');
+    expect(adminNames).toContain('alice:admin.refund_order');
+    expect(adminNames).toContain('alice:cart.add_to_cart');
+
+    // Switch to customer — admin tools vanish again, cart stays.
+    await page
+      .locator('button[data-ai-tool="set-role-customer"]')
+      .click();
+    await wait(200);
+
+    const customerNames = (await mcpClient.listTools()).tools.map(
+      (t) => t.name,
+    );
+    expect(customerNames).not.toContain('alice:admin.delete_user');
+    expect(customerNames).toContain('alice:cart.add_to_cart');
+
+    // _meta.scope='all' bypasses role filter — admin tools visible regardless.
+    const allRes = await mcpClient.request(
+      {
+        method: 'tools/list',
+        params: { _meta: { scope: 'all' } },
+      },
+      ((await import('@modelcontextprotocol/sdk/types.js')) as typeof import('@modelcontextprotocol/sdk/types.js'))
+        .ListToolsResultSchema,
+    );
+    const allNames = (
+      allRes as { tools: Array<{ name: string }> }
+    ).tools.map((t) => t.name);
+    expect(allNames).toContain('alice:admin.delete_user');
+  });
 });

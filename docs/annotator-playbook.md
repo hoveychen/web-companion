@@ -240,16 +240,172 @@ The repo's [`examples/coffee-shop`][demo] is a real worked example of
 all the above. To see what an annotated v0.2 spec looks like:
 
 - `examples/coffee-shop/public/.well-known/companion.json` — index
-  with 4 modules (cart / search / account / support)
+  with 5 modules (cart / search / account / support / admin)
 - `examples/coffee-shop/public/.well-known/companion/cart.json` — the
   flow with 3 tools + 1 resource (add_to_cart, remove_from_cart,
   checkout, cart-list extract)
+- `examples/coffee-shop/public/.well-known/companion/admin.json` —
+  v0.5 auth-aware flow (delete_user, refund_order) hoisted to module
+  scope via `where.roles: ['admin']` — see *Auth-aware tools* below
 - `examples/coffee-shop/src/App.tsx` — the source with all the
-  `data-ai-*` markers added inline
+  `data-ai-*` markers added inline plus the v0.5 `<body
+  data-wc-user-roles>` plumbing
 
 When unsure how to structure a new flow, search the coffee-shop demo
 for an analogous one (a list + tools-on-items pattern matches
-`cart`; a form + async result matches `search`).
+`cart`; a form + async result matches `search`; a role-gated panel
+matches `admin`).
+
+## Auth-aware tools (v0.5)
+
+By default a tool's `where:` only filters by *page* (url + marker).
+v0.5 adds an optional `roles:` field so the catalog the agent sees
+also narrows by *who's logged in*. Use this when the same page legitimately
+shows different actions to different users — admin vs staff vs customer
+vs anonymous.
+
+> **Safety check first.** This filter is **ergonomics, not
+> authorization.** The user-roles signal is page-supplied and untrusted.
+> The server enforcing the actual tool action (the click handler, the
+> fetch, the mutation) MUST still independently check RBAC — the filter
+> only shapes what the agent's planner sees, it doesn't gate
+> execution. See [`docs/v0.5-auth-aware-filter.md`][rfc] for the threat
+> model. If you're tempted to "use `roles:` to keep admin tools out of
+> a customer's reach", that's the *symptom*; the *cure* is the server
+> still saying 403, no matter what the spec says.
+
+### Pick the auth source
+
+The SDK collects `userRoles` from the DOM via this four-level
+fallback, first wins:
+
+1. **Explicit override** — the integrator passes
+   `attachWebSocket({ userRoles: [...] })` or
+   `<Sidecar userRoles={...} />`. Use this for reactive frameworks
+   that have a clean auth store (Redux/Zustand/Pinia). The function
+   form is re-evaluated on every page-state diff.
+2. **`<meta name="wc-user-roles" content="admin,staff">`** — emit
+   server-side for SSR'd apps. Comma OR whitespace separated.
+3. **`<body data-wc-user-roles="admin staff">`** — DOM attribute,
+   same separator rules. Friendliest for apps that already mirror
+   auth state to `<body class="role-admin">`-style class names.
+4. **Empty** — anonymous user; any tool with `where.roles: [...]`
+   becomes invisible.
+
+For the coffee-shop demo we picked option 3 (`<body
+data-wc-user-roles>`) wired through a `useEffect`:
+
+```tsx
+useEffect(() => {
+  if (userRole === 'anonymous') {
+    document.body.removeAttribute('data-wc-user-roles');
+  } else {
+    document.body.setAttribute('data-wc-user-roles', userRole);
+  }
+}, [userRole]);
+```
+
+The PageStateTracker's MutationObserver picks up the change, pushes
+`page/changed` with the new `userRoles[]`, and the bridge / backend
+re-runs `passesWhere` so the catalog narrows or widens in the same tick.
+
+### Decide what to gate
+
+Walk each module's tool list and ask "is there any user role for whom
+this tool shouldn't even be visible?". Common patterns:
+
+| Tool kind | Suggested `where.roles` |
+| --- | --- |
+| Destructive admin actions (delete_user, force_refund) | `['admin']` |
+| Moderator tools (close_ticket, freeze_account) | `['staff', 'admin']` |
+| Authenticated-only tools (place_order, save_profile) | every role except anonymous — e.g. `['customer', 'staff', 'admin']` |
+| Public tools (search, view_menu) | omit `roles:` entirely |
+
+If two roles share most tools, list them both. Don't try to express
+"everyone except X" — split into two flows if you must (see *Common
+anti-patterns* below for the rationale on negative match).
+
+### Hoist common gates to the module ref
+
+When a whole flow is role-gated, put `roles:` on the **`ModuleRef`**
+in `companion.json` instead of repeating it on every tool. The loader's
+`mergeWhere` propagates it down — child tools without their own `roles:`
+inherit the parent's. Coffee-shop's `admin` module is the canonical
+shape:
+
+```jsonc
+// public/.well-known/companion.json
+{
+  "version": "0.2",
+  "modules": [
+    {
+      "name": "admin",
+      "url": "./companion/admin.json",
+      "where": {
+        "marker": "[data-ai-view='admin']",
+        "roles": ["admin"]
+      }
+    }
+  ]
+}
+```
+
+```jsonc
+// public/.well-known/companion/admin.json
+{
+  "version": "0.2",
+  "tools": [
+    { "name": "delete_user", "description": "...",
+      "steps": [{ "type": "click", "target": "[data-ai-tool='admin-delete-user']" }] }
+  ]
+}
+```
+
+The child tool inherits `where: { marker: '[data-ai-view=admin]', roles: ['admin'] }`
+without re-declaring either. Child can still override either field
+locally (child-wins merge) — useful when most of a module is
+`['admin']` but one tool is `['admin', 'staff']`.
+
+### Module-level marker vs roles — when to combine
+
+If you set BOTH `marker` and `roles` on the module ref:
+
+- `marker` ensures the flow's UI is actually mounted (DOM check).
+- `roles` ensures the user has permission to see those actions
+  (page-supplied identity).
+
+Combining them is *fail-safer* than either alone. If a buggy page
+renders the admin panel for a customer user, the agent still won't see
+the tools because `roles` wouldn't pass — and conversely, if the
+identity is forged but the page hasn't rendered the panel, the agent
+still can't fire steps against missing DOM.
+
+### Anti-patterns the annotator should refuse
+
+- **Putting business secrets in `roles:`**. Roles are advertised in
+  the spec JSON, which is publicly fetchable from `/.well-known/`.
+  Don't name a role `admin-after-2024-q4-rollout` if that itself leaks
+  info — name roles by stable job function.
+- **Using `roles:` for tool-level RBAC**. The spec layer is not the
+  authorization layer. If a tool calls `/api/admin/delete_user`, the
+  server must re-check the auth on that endpoint regardless of what
+  the spec says.
+- **Synthesizing roles the page doesn't have**. Don't add `roles:
+  ['user']` to every tool just to "be safe" — anonymous users (e.g.
+  search) will lose access to legitimately-public tools.
+- **Compound conditions (`roles AND plan AND seat-count`)**. The DSL
+  only does role intersection. If your app needs richer gates, split
+  the tool across flows or accept that the filter is best-effort.
+
+### Update the worked example
+
+Coffee-shop's `admin` flow demonstrates the full end-to-end:
+`<body data-wc-user-roles>` plumbing, module-level `where: { marker,
+roles }`, two role-gated tools, a `list` resource, plus a backend e2e
+test (`mode-2-backend.spec.ts`) that toggles role and confirms
+`tools/list` narrows/widens.
+
+[rfc]: ./v0.5-auth-aware-filter.md
 
 ## Decision rubric — when in doubt, lean these ways
 
@@ -263,6 +419,7 @@ for an analogous one (a list + tools-on-items pattern matches
 | `<button onClick={() => navigate('/x')}>` | Skip — pure-nav buttons rarely belong in the tool catalog; they don't *do* anything other agents can't already do |
 | Input value should be set by AI | `fill` step; remember React-controlled inputs need the native setter (the SDK handles that) |
 | Async results need to mount before next step | `wait_for` step after the trigger |
+| Tool only valid for some user roles | `where.roles: [...]` on the tool — or hoist to the `ModuleRef` if the whole flow is gated. See *Auth-aware tools* |
 
 ## Common anti-patterns to refuse
 

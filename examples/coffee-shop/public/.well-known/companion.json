@@ -24,6 +24,12 @@
       "url": "./companion/support.json",
       "description": "客服工单流（演示用 stub UI）。挂载 [data-ai-view='support'] 时激活。",
       "where": { "marker": "[data-ai-view='support']" }
+    },
+    {
+      "name": "admin",
+      "url": "./companion/admin.json",
+      "description": "管理后台 (stub)。仅 user-roles 含 'admin' 时 agent 可见 — v0.5 auth-aware filter 演示。",
+      "where": { "marker": "[data-ai-view='admin']", "roles": ["admin"] }
     }
   ]
 }

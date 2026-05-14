@@ -1,4 +1,10 @@
-import { useCallback, useMemo, useState, type CSSProperties } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+} from 'react';
 import {
   Companion,
   createAnthropicDecider,
@@ -25,6 +31,23 @@ export function App() {
     Array<{ id: string; subject: string; status: 'open' | 'closed' }>
   >([]);
   const [supportSubject, setSupportSubject] = useState('');
+
+  // v0.5 demo: mock auth state — toggle reflects to <body data-wc-user-roles>,
+  // PageStateTracker picks it up via its 4-level fallback, page/changed pushes
+  // userRoles to the server, the catalog filter re-runs, and admin-gated
+  // tools appear / disappear from `tools/list` accordingly.
+  type Role = 'anonymous' | 'customer' | 'admin';
+  const [userRole, setUserRole] = useState<Role>('anonymous');
+  const [adminLog, setAdminLog] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined' || !document.body) return;
+    if (userRole === 'anonymous') {
+      document.body.removeAttribute('data-wc-user-roles');
+    } else {
+      document.body.setAttribute('data-wc-user-roles', userRole);
+    }
+  }, [userRole]);
 
   // Mode-2 switch: when both VITE_BACKEND_URL and VITE_USER_TOKEN are set,
   // mount the headless <Sidecar/> instead of the in-page <Companion> sidebar.
@@ -65,6 +88,23 @@ export function App() {
         <p style={{ margin: '4px 0 0', opacity: 0.6, fontSize: 13 }}>
           试着对右边的 Companion 说：「加一份摩卡」「看看购物车」「结账」
         </p>
+        <div style={roleRowStyle} data-ai="role-picker">
+          <span style={{ opacity: 0.6, fontSize: 12 }}>v0.5 demo · 当前身份：</span>
+          {(['anonymous', 'customer', 'admin'] as const).map((r) => (
+            <button
+              key={r}
+              type="button"
+              data-ai-tool={`set-role-${r}`}
+              onClick={() => setUserRole(r)}
+              style={{
+                ...roleBtnStyle,
+                ...(userRole === r ? roleBtnActiveStyle : {}),
+              }}
+            >
+              {r}
+            </button>
+          ))}
+        </div>
       </header>
 
       <section style={searchSectionStyle} data-ai-view="search">
@@ -368,6 +408,69 @@ export function App() {
         </section>
       )}
 
+      {/* v0.5 admin flow demo — DOM-mounted regardless of role; the spec's
+          module-level `where.roles: ['admin']` gate decides whether agents
+          can see (and invoke) these tools. Switch the role picker above to
+          watch the catalog narrow/widen live. */}
+      <section
+        data-ai-view="admin"
+        data-ai="admin-panel"
+        style={stubPanelStyle}
+      >
+        <h2 style={sectionTitle}>管理后台 (stub)</h2>
+        <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>
+          这些按钮在 DOM 里始终挂着；agent 能否看见 / 调用，取决于
+          <code> companion/admin.json</code> 上的{' '}
+          <code>where.roles: ['admin']</code>。
+        </p>
+        <div style={stubControlsStyle}>
+          <button
+            type="button"
+            data-ai-tool="admin-delete-user"
+            onClick={() =>
+              setAdminLog((prev) => [
+                `[${new Date().toLocaleTimeString()}] soft-deleted user`,
+                ...prev,
+              ])
+            }
+            style={stubBtnStyle}
+          >
+            删除用户
+          </button>
+          <button
+            type="button"
+            data-ai-tool="admin-refund-order"
+            onClick={() =>
+              setAdminLog((prev) => [
+                `[${new Date().toLocaleTimeString()}] refunded order`,
+                ...prev,
+              ])
+            }
+            style={stubBtnStyle}
+          >
+            退款订单
+          </button>
+        </div>
+        <ul
+          style={{ ...cartListStyle, marginTop: 8 }}
+          data-ai="admin-log"
+        >
+          {adminLog.length === 0 ? (
+            <li style={{ opacity: 0.5, fontSize: 13 }}>暂无操作记录</li>
+          ) : (
+            adminLog.map((entry, i) => (
+              <li
+                key={`${entry}-${i}`}
+                data-ai="admin-log-entry"
+                style={{ fontSize: 12, padding: '2px 0' }}
+              >
+                {entry}
+              </li>
+            ))
+          )}
+        </ul>
+      </section>
+
       {useSidecar ? (
         <Sidecar
           backendUrl={backendUrl!}
@@ -392,6 +495,27 @@ const pageStyle: CSSProperties = {
   paddingRight: 'calc(360px + 48px)',
 };
 const headerStyle: CSSProperties = { marginBottom: 24 };
+const roleRowStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  marginTop: 10,
+  fontSize: 13,
+};
+const roleBtnStyle: CSSProperties = {
+  background: 'rgba(0,0,0,0.06)',
+  color: 'rgb(38 38 38)',
+  border: '1px solid rgba(0,0,0,0.12)',
+  borderRadius: 999,
+  padding: '4px 12px',
+  fontSize: 12,
+  cursor: 'pointer',
+};
+const roleBtnActiveStyle: CSSProperties = {
+  background: 'rgb(99 102 241)',
+  color: 'white',
+  borderColor: 'rgb(99 102 241)',
+};
 const searchSectionStyle: CSSProperties = {
   background: 'white',
   borderRadius: 12,
