@@ -210,6 +210,41 @@ await wait(80);
   );
 }
 
+console.log(
+  '# Phase 8 (v0.6): deeper nested surface names pass through bridge filter',
+);
+// Re-list with a 3-segment surface name (the loader would produce these
+// for nested modules in v0.6). The bridge should treat them exactly
+// the same as 2-segment names — no special-casing.
+send({
+  type: 'tools/list',
+  tools: [
+    {
+      name: 'ecommerce.checkout.submit',
+      description: 'nested tool',
+      steps: [{ type: 'click', target: '[data-ai="deep"]' }],
+    },
+  ],
+});
+await wait(80);
+{
+  const all = bridge.listAllTools('all').map((e) => e.tool.name);
+  expect(
+    all.includes('ecommerce.checkout.submit'),
+    `3-segment surface name forwarded as-is (got: ${all.join(',')})`,
+  );
+  // The bridge namespaces tools as `<ns>:<surface>`. Read from snapshotSessions
+  // to confirm the namespace doesn't mangle a deeper surface name.
+  const snap = bridge.snapshotSessions();
+  const names = snap.flatMap((s) =>
+    s.tools.map((t) => `${s.info.namespace}:${t.name}`),
+  );
+  expect(
+    names.some((n) => n.endsWith(':ecommerce.checkout.submit')),
+    `bridge namespace appends 3-segment surface intact (got: ${names.join(',')})`,
+  );
+}
+
 offCatalog();
 ws.close();
 await wait(60);

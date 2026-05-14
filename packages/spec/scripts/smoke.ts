@@ -175,6 +175,31 @@ const cases: Case[] = [
     input: loadCoffeeShopSpec(),
     expect: 'ok',
   },
+  {
+    label:
+      'v0.6 sanity: sub-module file with its own modules array is schema-accepted',
+    // The "no nested modules" rule was a loader-level guard, not a schema
+    // constraint. v0.6 lifts the loader guard (replaced by maxDepth). Lock
+    // the schema-level acceptance with a smoke case so a future tightening
+    // doesn't regress.
+    input: {
+      version: '0.2',
+      modules: [
+        {
+          name: 'inner',
+          url: './deeper.json',
+        },
+      ],
+      tools: [
+        {
+          name: 'shallow',
+          description: 'declared inline alongside a nested-modules ref',
+          steps: [{ type: 'click', target: '[data-ai-tool="shallow"]' }],
+        },
+      ],
+    },
+    expect: 'ok',
+  },
 ];
 
 function loadCoffeeShopSpec(): unknown {
