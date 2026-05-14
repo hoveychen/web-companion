@@ -193,7 +193,7 @@ export async function loadCompanionSpec(
  * a parent providing `url` and a child providing `marker` produces a more
  * specific child capability that must satisfy both.
  */
-function mergeWhere(
+export function mergeWhere(
   parent: WhereSpec | undefined,
   child: WhereSpec | undefined,
 ): WhereSpec | undefined {
@@ -201,10 +201,14 @@ function mergeWhere(
   if (!child) return parent;
   const url = child.url ?? parent.url;
   const marker = child.marker ?? parent.marker;
-  if (url === undefined && marker === undefined) return undefined;
+  const roles = child.roles ?? parent.roles;
+  if (url === undefined && marker === undefined && roles === undefined) {
+    return undefined;
+  }
   return {
     ...(url !== undefined && { url }),
     ...(marker !== undefined && { marker }),
+    ...(roles !== undefined && { roles }),
   } as WhereSpec;
 }
 

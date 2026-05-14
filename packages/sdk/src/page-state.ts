@@ -14,13 +14,33 @@
 export interface PageState {
   currentUrl: string;
   matchedMarkers: string[];
+  /**
+   * v0.5: roles the page declares the current user has. See `collectUserRoles`
+   * for the four-level fallback. Sorted+deduped so diff comparisons are stable.
+   * Treated as untrusted by the server — this is an ergonomics signal, not an
+   * authorization claim (the server must independently enforce RBAC).
+   */
+  userRoles: string[];
 }
+
+/**
+ * v0.5: where the SDK pulls the user-roles list from.
+ * - `string[]` — set once at construction; e.g. backend-injected via a build step.
+ * - `() => string[]` — called every diff; wire to your auth store for reactive apps.
+ */
+export type UserRolesSource = string[] | (() => string[]);
 
 export interface PageStateTrackerOptions {
   /** CSS selectors the catalog cares about. Order is not preserved. */
   knownMarkers: Iterable<string>;
   /** Fired with the new state when a diff is detected. */
   onChange: (state: PageState) => void;
+  /**
+   * v0.5 explicit override. If provided, skips the meta/body DOM fallbacks.
+   * Function form lets a reactive app re-evaluate on each compute() (e.g. read
+   * from a React store ref).
+   */
+  userRoles?: UserRolesSource;
 }
 
 /**
@@ -63,6 +83,7 @@ function ensureHistoryPatched(): void {
 export class PageStateTracker {
   private readonly knownMarkers: string[];
   private readonly onChange: (state: PageState) => void;
+  private readonly userRolesSource: UserRolesSource | undefined;
   private currentState: PageState;
   private observer: MutationObserver | null = null;
   private rafScheduled = false;
@@ -73,6 +94,7 @@ export class PageStateTracker {
   constructor(opts: PageStateTrackerOptions) {
     this.knownMarkers = [...new Set(opts.knownMarkers)];
     this.onChange = opts.onChange;
+    this.userRolesSource = opts.userRoles;
     this.currentState = this.compute();
   }
 
@@ -80,11 +102,12 @@ export class PageStateTracker {
     return this.currentState;
   }
 
-  /** Snapshot, comparison-friendly (sorted markers). */
+  /** Snapshot, comparison-friendly (sorted markers + roles). */
   snapshot(): PageState {
     return {
       currentUrl: this.currentState.currentUrl,
       matchedMarkers: [...this.currentState.matchedMarkers].sort(),
+      userRoles: [...this.currentState.userRoles].sort(),
     };
   }
 
@@ -177,16 +200,77 @@ export class PageStateTracker {
         }
       }
     }
-    return { currentUrl, matchedMarkers: matched };
+    const userRoles = collectUserRoles(this.userRolesSource);
+    return { currentUrl, matchedMarkers: matched, userRoles };
   }
+}
+
+/**
+ * v0.5 user-roles collection. Four-level fallback, first wins:
+ *   1. `provider` — explicit override (array or thunk) passed to the tracker
+ *   2. `<meta name="wc-user-roles" content="admin,staff">`
+ *   3. `<body data-wc-user-roles="admin staff">`
+ *   4. `[]` (anonymous)
+ *
+ * Returned list is normalized: trimmed, deduped, sorted. Empty strings are
+ * dropped. Separator is comma OR any whitespace (so both `"admin,staff"` and
+ * `"admin staff"` work — the latter is friendlier when interpolating from a
+ * `String.join(' ')` shape).
+ */
+export function collectUserRoles(provider?: UserRolesSource): string[] {
+  if (provider !== undefined) {
+    const raw = typeof provider === 'function' ? provider() : provider;
+    return normalizeRoles(raw);
+  }
+  if (typeof document === 'undefined') return [];
+  try {
+    const meta = document.querySelector('meta[name="wc-user-roles"]');
+    if (meta) {
+      const content = (meta as Element).getAttribute('content') ?? '';
+      return normalizeRoles(splitRoles(content));
+    }
+  } catch {
+    /* querySelector can throw on extreme docs — fall through */
+  }
+  try {
+    const body = document.body;
+    if (body) {
+      const attr = body.getAttribute('data-wc-user-roles');
+      if (attr !== null) {
+        return normalizeRoles(splitRoles(attr));
+      }
+    }
+  } catch {
+    /* same — fall through */
+  }
+  return [];
+}
+
+function splitRoles(str: string): string[] {
+  // Comma OR whitespace separated. Empty results are dropped by normalizeRoles.
+  return str.split(/[,\s]+/);
+}
+
+function normalizeRoles(raw: Iterable<string>): string[] {
+  const seen = new Set<string>();
+  for (const r of raw) {
+    const trimmed = String(r).trim();
+    if (trimmed.length > 0) seen.add(trimmed);
+  }
+  return [...seen].sort();
 }
 
 function sameState(a: PageState, b: PageState): boolean {
   if (a.currentUrl !== b.currentUrl) return false;
   if (a.matchedMarkers.length !== b.matchedMarkers.length) return false;
-  const aSet = new Set(a.matchedMarkers);
+  const aMarkers = new Set(a.matchedMarkers);
   for (const m of b.matchedMarkers) {
-    if (!aSet.has(m)) return false;
+    if (!aMarkers.has(m)) return false;
+  }
+  if (a.userRoles.length !== b.userRoles.length) return false;
+  const aRoles = new Set(a.userRoles);
+  for (const r of b.userRoles) {
+    if (!aRoles.has(r)) return false;
   }
   return true;
 }

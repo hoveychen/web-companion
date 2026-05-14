@@ -1,5 +1,5 @@
 import type { ResourceSpec, ToolSpec } from '@web-companion/spec';
-import { PageStateTracker, type PageState } from './page-state.js';
+import { PageStateTracker, type PageState, type UserRolesSource } from './page-state.js';
 import { WrongPageError } from './where-check.js';
 
 /**
@@ -26,6 +26,13 @@ export interface AttachWebSocketOptions {
   reconnectBackoffMs?: number;
   /** Cap on reconnect backoff. Default 30_000. */
   maxReconnectMs?: number;
+  /**
+   * v0.5 explicit user-roles override. If unset, the SDK falls back to
+   * `<meta name="wc-user-roles">`, then `<body data-wc-user-roles>`, then
+   * `[]` (anonymous). Function form is re-evaluated on each diff so reactive
+   * apps can wire it to an auth store.
+   */
+  userRoles?: UserRolesSource;
 }
 
 export type WsState = 'connecting' | 'open' | 'reconnecting' | 'closed';
@@ -62,6 +69,7 @@ export function attachWebSocket(
   const knownMarkers = collectKnownMarkers(runtime);
   const pageTracker = new PageStateTracker({
     knownMarkers,
+    userRoles: options.userRoles,
     onChange: (next) => emitPageChanged(next),
   });
 

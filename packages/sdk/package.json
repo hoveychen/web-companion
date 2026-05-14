@@ -19,7 +19,8 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "smoke-loader": "tsx scripts/smoke-loader.ts",
-    "smoke-meta-tools": "tsx scripts/smoke-meta-tools.ts"
+    "smoke-meta-tools": "tsx scripts/smoke-meta-tools.ts",
+    "smoke-roles": "tsx scripts/smoke-roles.ts"
   },
   "dependencies": {
     "@web-companion/spec": "workspace:^",

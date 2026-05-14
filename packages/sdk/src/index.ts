@@ -6,6 +6,7 @@ export {
 export {
   DEFAULT_SPEC_PATH,
   loadCompanionSpec,
+  mergeWhere,
   type LoadResult,
   type LoaderOptions,
   type ModuleErrorInfo,
@@ -66,8 +67,10 @@ export {
 } from './ws-client.js';
 export {
   PageStateTracker,
+  collectUserRoles,
   type PageState,
   type PageStateTrackerOptions,
+  type UserRolesSource,
 } from './page-state.js';
 export {
   deriveFlow,
