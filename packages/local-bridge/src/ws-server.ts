@@ -108,7 +108,7 @@ export class BridgeWsServer {
   }
 
   listSessions(): SessionInfo[] {
-    return [...this.sessions.values()].map((s) => ({
+    return this.activeSessions().map((s) => ({
       sessionId: s.sessionId,
       origin: s.origin,
       tabTitle: s.tabTitle,
@@ -133,7 +133,7 @@ export class BridgeWsServer {
     scope: 'page' | 'all' = 'page',
   ): Array<{ namespace: string; sessionId: string; tool: ToolSpec }> {
     const out: Array<{ namespace: string; sessionId: string; tool: ToolSpec }> = [];
-    for (const s of this.sessions.values()) {
+    for (const s of this.activeSessions()) {
       for (const tool of s.tools) {
         if (scope === 'page' && !passesWhere(tool.where, s.pageState)) continue;
         out.push({ namespace: s.namespace, sessionId: s.sessionId, tool });
@@ -146,11 +146,27 @@ export class BridgeWsServer {
     scope: 'page' | 'all' = 'page',
   ): Array<{ namespace: string; sessionId: string; resource: ResourceSpec }> {
     const out: Array<{ namespace: string; sessionId: string; resource: ResourceSpec }> = [];
-    for (const s of this.sessions.values()) {
+    for (const s of this.activeSessions()) {
       for (const r of s.resources) {
         if (scope === 'page' && !passesWhere(r.where, s.pageState)) continue;
         out.push({ namespace: s.namespace, sessionId: s.sessionId, resource: r });
       }
+    }
+    return out;
+  }
+
+  /**
+   * Sessions whose underlying ws is in the OPEN state — filters out
+   * grace-pending entries that still occupy `this.sessions` while waiting
+   * for a reconnect (their ws is CLOSED, readyState=3) AND brand-new
+   * sessions whose ws is mid-handshake (CONNECTING=0). Without this
+   * filter, list/snapshot APIs double-count tools across rapid
+   * reconnect windows (cross-test bleed in Playwright runs).
+   */
+  private activeSessions(): InternalSession[] {
+    const out: InternalSession[] = [];
+    for (const s of this.sessions.values()) {
+      if (s.ws.readyState === s.ws.OPEN) out.push(s);
     }
     return out;
   }
@@ -166,7 +182,7 @@ export class BridgeWsServer {
     tools: ToolSpec[];
     resources: ResourceSpec[];
   }> {
-    return [...this.sessions.values()].map((s) => ({
+    return this.activeSessions().map((s) => ({
       info: {
         sessionId: s.sessionId,
         origin: s.origin,
