@@ -122,6 +122,55 @@ const cases: Case[] = [
     failContains: 'identifier must match',
   },
   {
+    label: 'v0.5 happy: tool with where.roles only (no url/marker)',
+    input: {
+      version: '0.2',
+      tools: [
+        {
+          name: 'delete_user',
+          description: 'soft-delete a user account',
+          where: { roles: ['admin'] },
+          steps: [
+            { type: 'click', target: '[data-ai-tool="delete-user-{id}"]' },
+          ],
+        },
+      ],
+    },
+    expect: 'ok',
+  },
+  {
+    label: 'v0.5 reject empty roles array',
+    input: {
+      version: '0.2',
+      tools: [
+        {
+          name: 'delete_user',
+          description: 'soft-delete a user account',
+          where: { roles: [] },
+          steps: [{ type: 'click', target: '[data-ai-tool="x"]' }],
+        },
+      ],
+    },
+    expect: 'fail',
+    failContains: 'at least 1',
+  },
+  {
+    label: 'v0.5 reject non-identifier role name',
+    input: {
+      version: '0.2',
+      tools: [
+        {
+          name: 'delete_user',
+          description: 'soft-delete a user account',
+          where: { roles: ['super.admin'] },
+          steps: [{ type: 'click', target: '[data-ai-tool="x"]' }],
+        },
+      ],
+    },
+    expect: 'fail',
+    failContains: 'identifier must match',
+  },
+  {
     label: 'backward compat: real-world coffee-shop spec (v0.1) still parses',
     input: loadCoffeeShopSpec(),
     expect: 'ok',

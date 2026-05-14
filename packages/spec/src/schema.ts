@@ -124,17 +124,27 @@ export const extractConfigSchema = z.discriminatedUnion('type', [
  *                current document. Use this for SPAs that don't rotate URLs
  *                (hash routing, state-only routing) — the developer / AI
  *                annotator tags each "view" wrapper with `data-ai-view='...'`.
+ *   - `roles`  : v0.5 — at least one of these role names must appear in the
+ *                runtime's collected `userRoles`. This is an ergonomics filter
+ *                (reduces agent token cost / confusion when the catalog has
+ *                role-gated tools), NOT a security boundary — see
+ *                `docs/v0.5-auth-aware-filter.md`.
  *
- * Both can be combined for double-confirmation.
+ * Any combination can be supplied; all provided fields are AND'd together.
  */
 export const whereSchema = z
   .object({
     url: z.string().min(1).optional(),
     marker: z.string().min(1).optional(),
+    roles: z.array(identifierSchema).min(1).optional(),
   })
-  .refine((w) => w.url !== undefined || w.marker !== undefined, {
-    message: 'where must declare at least one of `url` or `marker`',
-  });
+  .refine(
+    (w) =>
+      w.url !== undefined || w.marker !== undefined || w.roles !== undefined,
+    {
+      message: 'where must declare at least one of `url`, `marker`, or `roles`',
+    },
+  );
 
 export const toolSchema = z.object({
   name: identifierSchema,
