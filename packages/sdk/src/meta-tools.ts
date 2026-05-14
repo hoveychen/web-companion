@@ -9,7 +9,20 @@ import { passesWhere, type CapturedPageState } from './where-check.js';
  */
 
 export interface FlowSummary {
+  /**
+   * Dot-joined path from root. v0.4 single-level: `'cart'`. v0.6 nested:
+   * `'ecommerce.checkout'` for a two-level flow. Tools surface as
+   * `<name>.<toolName>`.
+   */
   name: string;
+  /**
+   * v0.6: dot-joined path of this flow's parent module, if any. Undefined
+   * for top-level flows. Useful for renderers that want to indent or group
+   * by parent.
+   */
+  parent?: string;
+  /** v0.6: nesting level. 1 = top-level flow, 2 = one nested level, etc. */
+  depth: number;
   /** Aggregated description — first non-empty tool/resource description in the flow. */
   description: string;
   toolCount: number;
@@ -40,12 +53,37 @@ export interface ToolDescriptor {
 const FLOW_SEPARATOR = '.';
 
 /**
- * Surface name → flow name. `checkout.submit` → `checkout`. Site-level
- * (no `.`) → undefined.
+ * Surface name → flow path. v0.4 single-level: `cart.submit` → `'cart'`.
+ * v0.6 nested: `ecommerce.checkout.submit` → `'ecommerce.checkout'` (full
+ * path from root to the leaf containing module, *without* the trailing
+ * tool / resource name). Site-level surface names (no `.`) → `undefined`.
  */
 export function deriveFlow(surfaceName: string): string | undefined {
-  const idx = surfaceName.indexOf(FLOW_SEPARATOR);
+  const idx = surfaceName.lastIndexOf(FLOW_SEPARATOR);
   return idx > 0 ? surfaceName.slice(0, idx) : undefined;
+}
+
+/**
+ * v0.6 helper: every ancestor flow path of a flow name. For
+ * `'ecommerce.checkout'` → `['ecommerce', 'ecommerce.checkout']`. Used to
+ * surface intermediate (transitive-only) flows in `summarizeFlows`.
+ */
+function ancestorFlowPaths(flow: string): string[] {
+  const parts = flow.split(FLOW_SEPARATOR);
+  const out: string[] = [];
+  for (let i = 1; i <= parts.length; i++) {
+    out.push(parts.slice(0, i).join(FLOW_SEPARATOR));
+  }
+  return out;
+}
+
+function flowParent(flow: string): string | undefined {
+  const idx = flow.lastIndexOf(FLOW_SEPARATOR);
+  return idx > 0 ? flow.slice(0, idx) : undefined;
+}
+
+function flowDepth(flow: string): number {
+  return flow.split(FLOW_SEPARATOR).length;
 }
 
 export function summarizePages(
@@ -77,15 +115,24 @@ export function summarizeFlows(
   resources: ResourceSpec[],
   pageState: CapturedPageState,
 ): FlowSummary[] {
-  const acc = new Map<
+  // v0.6: a tool surfacing as 'ecommerce.checkout.submit' counts toward
+  // both the 'ecommerce.checkout' flow (direct parent) AND surfaces
+  // 'ecommerce' as an intermediate ancestor so renderers can build a
+  // tree. `directTools` / `directResources` only count items declared
+  // directly inside a given flow; ancestor entries get a 0 count but
+  // still appear so depth+parent are queryable.
+  const direct = new Map<
     string,
     { toolCount: number; resourceCount: number; description: string; active: boolean }
   >();
+  const ancestors = new Set<string>();
+
   for (const t of tools) {
     const f = deriveFlow(t.name);
     if (!f) continue;
+    for (const a of ancestorFlowPaths(f)) ancestors.add(a);
     const entry =
-      acc.get(f) ?? {
+      direct.get(f) ?? {
         toolCount: 0,
         resourceCount: 0,
         description: '',
@@ -94,13 +141,14 @@ export function summarizeFlows(
     entry.toolCount += 1;
     if (!entry.description && t.description) entry.description = t.description;
     if (passesWhere(t.where, pageState)) entry.active = true;
-    acc.set(f, entry);
+    direct.set(f, entry);
   }
   for (const r of resources) {
     const f = deriveFlow(r.name);
     if (!f) continue;
+    for (const a of ancestorFlowPaths(f)) ancestors.add(a);
     const entry =
-      acc.get(f) ?? {
+      direct.get(f) ?? {
         toolCount: 0,
         resourceCount: 0,
         description: '',
@@ -109,24 +157,39 @@ export function summarizeFlows(
     entry.resourceCount += 1;
     if (!entry.description && r.description) entry.description = r.description;
     if (passesWhere(r.where, pageState)) entry.active = true;
-    acc.set(f, entry);
+    direct.set(f, entry);
   }
-  return [...acc.entries()]
-    .map(([name, info]) => ({
-      name,
-      description: info.description,
-      toolCount: info.toolCount,
-      resourceCount: info.resourceCount,
-      active: info.active,
-    }))
+
+  // Emit every ancestor (which is a superset of `direct`'s keys); flows
+  // with no direct tools/resources get toolCount=0 / resourceCount=0
+  // but still surface so agents can render the hierarchy.
+  return [...ancestors]
+    .map((name) => {
+      const info = direct.get(name);
+      const parent = flowParent(name);
+      return {
+        name,
+        ...(parent !== undefined ? { parent } : {}),
+        depth: flowDepth(name),
+        description: info?.description ?? '',
+        toolCount: info?.toolCount ?? 0,
+        resourceCount: info?.resourceCount ?? 0,
+        active: info?.active ?? false,
+      };
+    })
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**
- * If `flow` is provided, returns every tool in that flow (irrespective of
- * pageState — the agent is exploring). If `flow` is undefined, returns
- * tools active under the current pageState (whatever the `tools/list`
- * default scope would surface, minus the namespacing wrapper).
+ * If `flow` is provided, returns every tool whose surface flow path
+ * starts with that prefix — v0.4 exact-match (`'cart'` returns tools
+ * with `deriveFlow === 'cart'`) AND v0.6 transitive descendants
+ * (`'ecommerce'` returns tools at `ecommerce.checkout.submit`,
+ * `ecommerce.cart.add`, etc.). pageState is ignored — the agent is
+ * exploring.
+ *
+ * If `flow` is undefined, returns tools active under the current
+ * pageState (whatever the `tools/list` default scope would surface).
  */
 export function summarizeTools(
   tools: ToolSpec[],
@@ -136,7 +199,11 @@ export function summarizeTools(
   const out: ToolDescriptor[] = [];
   for (const t of tools) {
     if (flow !== undefined) {
-      if (deriveFlow(t.name) !== flow) continue;
+      const toolFlow = deriveFlow(t.name);
+      if (toolFlow === undefined) continue;
+      if (toolFlow !== flow && !toolFlow.startsWith(flow + FLOW_SEPARATOR)) {
+        continue;
+      }
     } else {
       if (!passesWhere(t.where, pageState)) continue;
     }

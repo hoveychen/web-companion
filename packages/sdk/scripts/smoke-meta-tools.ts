@@ -141,6 +141,96 @@ console.log('# summarizeTools(flow) — all tools in that flow regardless of pag
   );
 }
 
+console.log('# v0.6 summarizeFlows — parent + depth fields populated');
+{
+  const fs = summarizeFlows(tools, resources, onCart);
+  const m = new Map(fs.map((f) => [f.name, f]));
+  const co = m.get('checkout')!;
+  expect(co.depth === 1, `checkout depth=1 (got: ${co.depth})`);
+  expect(co.parent === undefined, 'checkout has no parent (top-level)');
+  const nv = m.get('nav')!;
+  expect(nv.depth === 1, `nav depth=1 (got: ${nv.depth})`);
+}
+
+console.log('# v0.6 summarizeFlows — nested tool surfaces ancestor entries');
+{
+  const nestedTools: ToolSpec[] = [
+    {
+      name: 'ecommerce.checkout.submit',
+      description: 'Place order.',
+      steps: [{ type: 'click', target: '[data-ai="x"]' }],
+    },
+    {
+      name: 'ecommerce.cart.add',
+      description: 'Add to cart.',
+      steps: [{ type: 'click', target: '[data-ai="y"]' }],
+    },
+  ];
+  const fs = summarizeFlows(nestedTools, [], onHomepage);
+  const m = new Map(fs.map((f) => [f.name, f]));
+  expect(
+    m.size === 3,
+    `3 flow entries: ecommerce + ecommerce.checkout + ecommerce.cart (got: ${m.size})`,
+  );
+
+  const eco = m.get('ecommerce');
+  expect(eco !== undefined, 'ecommerce ancestor surfaced');
+  expect(
+    eco?.depth === 1 && eco?.parent === undefined,
+    `ecommerce depth=1, no parent (got depth=${eco?.depth} parent=${eco?.parent})`,
+  );
+  expect(
+    eco?.toolCount === 0,
+    `ecommerce has 0 direct tools (transitive only) (got: ${eco?.toolCount})`,
+  );
+
+  const checkout = m.get('ecommerce.checkout');
+  expect(
+    checkout?.depth === 2 && checkout?.parent === 'ecommerce',
+    `ecommerce.checkout depth=2 parent=ecommerce (got depth=${checkout?.depth} parent=${checkout?.parent})`,
+  );
+  expect(
+    checkout?.toolCount === 1,
+    `ecommerce.checkout has 1 direct tool (got: ${checkout?.toolCount})`,
+  );
+}
+
+console.log('# v0.6 summarizeTools(flow=) — prefix match returns descendants');
+{
+  const nestedTools: ToolSpec[] = [
+    {
+      name: 'ecommerce.checkout.submit',
+      description: 'submit',
+      steps: [{ type: 'click', target: '[data-ai="a"]' }],
+    },
+    {
+      name: 'ecommerce.cart.add',
+      description: 'add',
+      steps: [{ type: 'click', target: '[data-ai="b"]' }],
+    },
+    {
+      name: 'support.tickets.open',
+      description: 'open',
+      steps: [{ type: 'click', target: '[data-ai="c"]' }],
+    },
+  ];
+  const all = summarizeTools(nestedTools, onHomepage, 'ecommerce')
+    .map((t) => t.name)
+    .sort();
+  expect(
+    all.join(',') === 'ecommerce.cart.add,ecommerce.checkout.submit',
+    `prefix 'ecommerce' returns both descendants (got: ${all.join(',')})`,
+  );
+  // Exact match also works.
+  const exact = summarizeTools(nestedTools, onHomepage, 'ecommerce.checkout')
+    .map((t) => t.name)
+    .sort();
+  expect(
+    exact.join(',') === 'ecommerce.checkout.submit',
+    `prefix 'ecommerce.checkout' narrows further (got: ${exact.join(',')})`,
+  );
+}
+
 if (failed > 0) {
   process.stderr.write(`\n${failed} smoke cases failed\n`);
   process.exit(1);
