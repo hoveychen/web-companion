@@ -5,6 +5,7 @@ export {
 } from './registry.js';
 export {
   DEFAULT_SPEC_PATH,
+  DEFAULT_MAX_DEPTH,
   loadCompanionSpec,
   mergeWhere,
   type LoadResult,

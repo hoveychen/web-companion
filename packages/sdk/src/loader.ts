@@ -11,10 +11,11 @@ export const DEFAULT_SPEC_PATH = '/.well-known/companion.json';
 /**
  * One tool/resource that has been pulled out of its source file. The
  * `flow` field is undefined for items declared directly in the index
- * `companion.json`; it's the module's `name` for items pulled in via
- * `modules[]` (v0.2 only). `where` on the inner spec is the per-field
- * merge of the source file's per-item where and the module's
- * per-module where.
+ * `companion.json`; otherwise it's the dot-joined path of every
+ * containing module from root to leaf (e.g. `'cart'` for v0.4-style
+ * single-level nesting; `'ecommerce.checkout'` for v0.6 nested
+ * modules). `where` is the per-field merge of every ancestor's
+ * `where` with the item's own.
  */
 export interface ResolvedTool {
   flow?: string;
@@ -55,21 +56,43 @@ export interface ModuleErrorInfo {
   error: unknown;
 }
 
+/**
+ * Default cap for `LoaderOptions.maxDepth`. 1 = v0.4 single-level
+ * (`flow.tool`), 3 = v0.6 typical multi-tier (`domain.flow.subflow.tool`).
+ * Deeper trees are uncommon enough that the cap doubles as an
+ * accidental-recursion guard; override only when you really need it.
+ */
+export const DEFAULT_MAX_DEPTH = 3;
+
 export interface LoaderOptions {
   fetchImpl?: typeof fetch;
   /**
-   * Called when a module fails to fetch or parse. By default, errors
-   * are re-thrown (fail-fast). Provide a callback to log/silence and
-   * keep the rest of the catalog usable.
+   * Called when a module fails to fetch, parse, or — v0.6 — sits past
+   * `maxDepth`. By default, errors are re-thrown (fail-fast). Provide
+   * a callback to log/silence and keep the rest of the catalog usable.
    */
   onModuleError?: (info: ModuleErrorInfo) => void;
+  /**
+   * v0.6: max nesting levels allowed when following `modules[]` refs
+   * recursively. The root file is level 0; one level of children is
+   * depth 1; etc. Defaults to {@link DEFAULT_MAX_DEPTH}. Setting
+   * `maxDepth: 1` recreates the v0.4 single-level behavior. Setting
+   * `maxDepth: 0` disables nested modules entirely (only inline
+   * tools/resources are loaded).
+   */
+  maxDepth?: number;
 }
 
 interface Frame {
   url: string;
   parentWhere: WhereSpec | undefined;
-  /** Set for module-derived frames; undefined for the root index. */
-  flowName: string | undefined;
+  /**
+   * Dot-joined path from the root index to this frame, e.g. `[]` for
+   * the root, `['cart']` for a v0.4-style child, `['ecommerce',
+   * 'checkout']` for a v0.6 grand-child. The leaf surface name is
+   * `[...parentFlowPath, item.name].join('.')`.
+   */
+  parentFlowPath: string[];
   /** Back-pointer for module frames so we can mark them failed. */
   moduleEntry: ResolvedModule | undefined;
 }
@@ -85,6 +108,7 @@ export async function loadCompanionSpec(
   options: LoaderOptions = {},
 ): Promise<LoadResult> {
   const fetchImpl = options.fetchImpl ?? fetch;
+  const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
   const rootUrl = toAbsoluteUrl(url);
 
   const tools: ResolvedTool[] = [];
@@ -93,19 +117,33 @@ export async function loadCompanionSpec(
   const visited = new Set<string>();
 
   const queue: Frame[] = [
-    { url: rootUrl, parentWhere: undefined, flowName: undefined, moduleEntry: undefined },
+    {
+      url: rootUrl,
+      parentWhere: undefined,
+      parentFlowPath: [],
+      moduleEntry: undefined,
+    },
   ];
 
   while (queue.length > 0) {
     const frame = queue.shift()!;
-    const isRoot = frame.flowName === undefined;
+    const isRoot = frame.parentFlowPath.length === 0;
+    // The current frame's flow surface (dot-joined) — undefined at the
+    // root, otherwise the full path from root down to and including
+    // this frame's module name. Used for ResolvedTool.flow / ResolvedResource.flow.
+    const currentFlow = isRoot ? undefined : frame.parentFlowPath.join('.');
+    // Leaf module name = the segment this frame contributes. Only used
+    // for error reporting; undefined at root.
+    const leafModuleName = isRoot
+      ? undefined
+      : frame.parentFlowPath[frame.parentFlowPath.length - 1];
 
     if (visited.has(frame.url)) {
       const err = new Error(`spec module cycle: ${frame.url}`);
       if (!isRoot && options.onModuleError) {
         frame.moduleEntry!.loaded = false;
         options.onModuleError({
-          moduleName: frame.flowName!,
+          moduleName: leafModuleName!,
           url: frame.url,
           error: err,
         });
@@ -125,16 +163,11 @@ export async function loadCompanionSpec(
       }
       const json: unknown = await res.json();
       spec = parseCompanionSpec(json);
-      if (!isRoot && 'modules' in spec && (spec.modules?.length ?? 0) > 0) {
-        throw new Error(
-          `module '${frame.flowName}' declares nested modules; v0.2 forbids modules inside modules (one level deep).`,
-        );
-      }
     } catch (err) {
       if (!isRoot && options.onModuleError) {
         frame.moduleEntry!.loaded = false;
         options.onModuleError({
-          moduleName: frame.flowName!,
+          moduleName: leafModuleName!,
           url: frame.url,
           error: err,
         });
@@ -146,7 +179,7 @@ export async function loadCompanionSpec(
     for (const tool of spec.tools ?? []) {
       const merged = mergeWhere(frame.parentWhere, tool.where);
       tools.push({
-        ...(frame.flowName !== undefined ? { flow: frame.flowName } : {}),
+        ...(currentFlow !== undefined ? { flow: currentFlow } : {}),
         baseUrl: frame.url,
         tool: merged !== undefined ? { ...tool, where: merged } : tool,
       });
@@ -154,17 +187,20 @@ export async function loadCompanionSpec(
     for (const resource of spec.resources ?? []) {
       const merged = mergeWhere(frame.parentWhere, resource.where);
       resources.push({
-        ...(frame.flowName !== undefined ? { flow: frame.flowName } : {}),
+        ...(currentFlow !== undefined ? { flow: currentFlow } : {}),
         baseUrl: frame.url,
         resource:
           merged !== undefined ? { ...resource, where: merged } : resource,
       });
     }
 
-    // Only the index (v0.2) carries modules. Nested-module rejection happened above.
+    // v0.6: any frame (root or nested) may declare `modules`. Past
+    // `maxDepth` we surface a depth-exceeded error via onModuleError
+    // and skip — partial catalog preserved, no silent over-recursion.
     if ('modules' in spec) {
       for (const mod of spec.modules ?? []) {
         const absUrl = new URL(mod.url, frame.url).href;
+        const childPath = [...frame.parentFlowPath, mod.name];
         const entry: ResolvedModule = {
           name: mod.name,
           url: absUrl,
@@ -173,10 +209,27 @@ export async function loadCompanionSpec(
           ...(mod.where !== undefined && { where: mod.where }),
         };
         moduleEntries.push(entry);
+
+        if (childPath.length > maxDepth) {
+          entry.loaded = false;
+          const err = new Error(
+            `module '${childPath.join('.')}' exceeds loader maxDepth=${maxDepth}; raise LoaderOptions.maxDepth to follow deeper trees.`,
+          );
+          if (options.onModuleError) {
+            options.onModuleError({
+              moduleName: mod.name,
+              url: absUrl,
+              error: err,
+            });
+            continue;
+          }
+          throw err;
+        }
+
         queue.push({
           url: absUrl,
           parentWhere: mergeWhere(frame.parentWhere, mod.where),
-          flowName: mod.name,
+          parentFlowPath: childPath,
           moduleEntry: entry,
         });
       }

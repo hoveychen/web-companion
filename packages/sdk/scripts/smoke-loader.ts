@@ -359,7 +359,8 @@ const cases: Case[] = [
   },
 
   {
-    label: 'nested modules forbidden — module declaring further modules errors',
+    label:
+      'v0.6: 2-level nesting — `outer.inner.tool` surface name, both ancestors visit',
     run: async () => {
       const fetcher = makeFetch({
         'https://example.com/companion.json': {
@@ -376,6 +377,144 @@ const cases: Case[] = [
             modules: [{ name: 'inner', url: './inner.json' }],
           },
         },
+        'https://example.com/inner.json': {
+          ok: true,
+          body: {
+            version: '0.2',
+            tools: [
+              {
+                name: 'submit',
+                description: 'nested tool',
+                steps: [{ type: 'click', target: '[data-ai="x"]' }],
+              },
+            ],
+          },
+        },
+      });
+      const result = await loadCompanionSpec(
+        'https://example.com/companion.json',
+        { fetchImpl: fetcher },
+      );
+      assertEq(result.tools.length, 1, 'one tool surfaces');
+      assertEq(result.tools[0]!.flow, 'outer.inner', 'flow is dot-joined path');
+      const reg = new ActionRegistry();
+      reg.ingest(result);
+      assert(
+        reg.getTool('outer.inner.submit'),
+        'registry surfaces as outer.inner.submit',
+      );
+      assertEq(
+        reg.getTool('outer.submit'),
+        undefined,
+        'partial path not registered',
+      );
+      const inner = result.modules.find((m) => m.name === 'inner')!;
+      assertEq(inner.loaded, true, 'inner module loaded');
+    },
+  },
+
+  {
+    label:
+      'v0.6: 3-level nesting within default maxDepth=3 — `a.b.c.tool` works',
+    run: async () => {
+      const fetcher = makeFetch({
+        'https://example.com/companion.json': {
+          ok: true,
+          body: {
+            version: '0.2',
+            modules: [{ name: 'a', url: './a.json' }],
+          },
+        },
+        'https://example.com/a.json': {
+          ok: true,
+          body: {
+            version: '0.2',
+            modules: [{ name: 'b', url: './b.json' }],
+          },
+        },
+        'https://example.com/b.json': {
+          ok: true,
+          body: {
+            version: '0.2',
+            modules: [{ name: 'c', url: './c.json' }],
+          },
+        },
+        'https://example.com/c.json': {
+          ok: true,
+          body: {
+            version: '0.2',
+            tools: [
+              {
+                name: 'tool',
+                description: 'leaf',
+                steps: [{ type: 'click', target: '[data-ai="x"]' }],
+              },
+            ],
+          },
+        },
+      });
+      const result = await loadCompanionSpec(
+        'https://example.com/companion.json',
+        { fetchImpl: fetcher },
+      );
+      assertEq(result.tools.length, 1, 'one tool');
+      assertEq(result.tools[0]!.flow, 'a.b.c', '3-level path');
+    },
+  },
+
+  {
+    label:
+      'v0.6: 4-level over default maxDepth=3 — onModuleError(depth-exceeded), partial catalog',
+    run: async () => {
+      const fetcher = makeFetch({
+        'https://example.com/companion.json': {
+          ok: true,
+          body: {
+            version: '0.2',
+            modules: [{ name: 'a', url: './a.json' }],
+          },
+        },
+        'https://example.com/a.json': {
+          ok: true,
+          body: {
+            version: '0.2',
+            tools: [
+              {
+                name: 'shallow',
+                description: 'depth-1 tool',
+                steps: [{ type: 'click', target: '[data-ai="a"]' }],
+              },
+            ],
+            modules: [{ name: 'b', url: './b.json' }],
+          },
+        },
+        'https://example.com/b.json': {
+          ok: true,
+          body: {
+            version: '0.2',
+            modules: [{ name: 'c', url: './c.json' }],
+          },
+        },
+        'https://example.com/c.json': {
+          ok: true,
+          body: {
+            version: '0.2',
+            modules: [{ name: 'd', url: './d.json' }],
+          },
+        },
+        'https://example.com/d.json': {
+          ok: true,
+          body: {
+            version: '0.2',
+            tools: [
+              {
+                name: 'leaf',
+                description: 'deep leaf',
+                steps: [{ type: 'click', target: '[data-ai="z"]' }],
+              },
+            ],
+          },
+        },
       });
       const errors: ModuleErrorInfo[] = [];
       const result = await loadCompanionSpec(
@@ -385,13 +524,73 @@ const cases: Case[] = [
           onModuleError: (info) => errors.push(info),
         },
       );
-      assertEq(errors.length, 1, 'one error logged');
+      // depth 1-3 (a, a.b, a.b.c) load; d (depth 4) is refused.
+      assertEq(errors.length, 1, 'one depth error');
+      assertEq(errors[0]!.moduleName, 'd', 'deepest module flagged');
       assert(
-        (errors[0]!.error as Error).message.includes('nested modules'),
-        'error mentions nested modules',
+        (errors[0]!.error as Error).message.includes('maxDepth'),
+        'error mentions maxDepth',
       );
-      const outerEntry = result.modules.find((m) => m.name === 'outer')!;
-      assertEq(outerEntry.loaded, false, 'outer marked failed');
+      // 'shallow' from a.json should still load.
+      assertEq(result.tools.length, 1, 'partial catalog survives');
+      assertEq(result.tools[0]!.tool.name, 'shallow', 'shallow tool present');
+      const dEntry = result.modules.find((m) => m.name === 'd')!;
+      assertEq(dEntry.loaded, false, 'd marked unloaded');
+    },
+  },
+
+  {
+    label: 'v0.6: maxDepth=4 override allows previously-blocked 4-level tree',
+    run: async () => {
+      const fetcher = makeFetch({
+        'https://example.com/companion.json': {
+          ok: true,
+          body: {
+            version: '0.2',
+            modules: [{ name: 'a', url: './a.json' }],
+          },
+        },
+        'https://example.com/a.json': {
+          ok: true,
+          body: {
+            version: '0.2',
+            modules: [{ name: 'b', url: './b.json' }],
+          },
+        },
+        'https://example.com/b.json': {
+          ok: true,
+          body: {
+            version: '0.2',
+            modules: [{ name: 'c', url: './c.json' }],
+          },
+        },
+        'https://example.com/c.json': {
+          ok: true,
+          body: {
+            version: '0.2',
+            modules: [{ name: 'd', url: './d.json' }],
+          },
+        },
+        'https://example.com/d.json': {
+          ok: true,
+          body: {
+            version: '0.2',
+            tools: [
+              {
+                name: 'leaf',
+                description: 'now reachable',
+                steps: [{ type: 'click', target: '[data-ai="z"]' }],
+              },
+            ],
+          },
+        },
+      });
+      const result = await loadCompanionSpec(
+        'https://example.com/companion.json',
+        { fetchImpl: fetcher, maxDepth: 4 },
+      );
+      assertEq(result.tools.length, 1, 'tool now loads');
+      assertEq(result.tools[0]!.flow, 'a.b.c.d', '4-level path');
     },
   },
 
