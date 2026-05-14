@@ -21,6 +21,12 @@ export interface FlowSummary {
 export interface PagesSummary {
   currentUrl: string;
   matchedMarkers: string[];
+  /**
+   * v0.5: roles the page declared for the current user (empty when anonymous
+   * or when the client's SDK is pre-v0.5). Surfaced so the agent can reason
+   * about why a tool is or isn't in scope.
+   */
+  userRoles: string[];
   /** Flows whose tools/resources include at least one passing `where`. */
   currentFlows: string[];
 }
@@ -61,6 +67,7 @@ export function summarizePages(
   return {
     currentUrl: pageState.currentUrl,
     matchedMarkers: [...pageState.matchedMarkers].sort(),
+    userRoles: [...(pageState.userRoles ?? [])].sort(),
     currentFlows: [...flows].sort(),
   };
 }

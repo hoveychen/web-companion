@@ -89,7 +89,7 @@ export class SessionRegistry {
       pageUrl: info.pageUrl,
       tools: [],
       resources: [],
-      pageState: { currentUrl: '', matchedMarkers: [] },
+      pageState: { currentUrl: '', matchedMarkers: [], userRoles: [] },
       pending: new Map(),
       nextRequestId: 1,
     };

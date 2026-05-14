@@ -175,14 +175,28 @@ function handleSdkConnection(
         const nextMarkers = Array.isArray(rawMarkers)
           ? rawMarkers.filter((m): m is string => typeof m === 'string')
           : [];
+        const rawRoles = msg['userRoles'];
+        const nextRoles = Array.isArray(rawRoles)
+          ? rawRoles.filter((r): r is string => typeof r === 'string')
+          : [];
         const prev = session.pageState;
-        const prevSet = new Set(prev.matchedMarkers);
-        const nextSet = new Set(nextMarkers);
+        const prevMarkerSet = new Set(prev.matchedMarkers);
+        const nextMarkerSet = new Set(nextMarkers);
         const sameMarkers =
           prev.matchedMarkers.length === nextMarkers.length &&
-          [...nextSet].every((m) => prevSet.has(m));
-        if (prev.currentUrl !== nextUrl || !sameMarkers) {
-          session.pageState = { currentUrl: nextUrl, matchedMarkers: nextMarkers };
+          [...nextMarkerSet].every((m) => prevMarkerSet.has(m));
+        const prevRoles = prev.userRoles ?? [];
+        const prevRoleSet = new Set(prevRoles);
+        const nextRoleSet = new Set(nextRoles);
+        const sameRoles =
+          prevRoles.length === nextRoles.length &&
+          [...nextRoleSet].every((r) => prevRoleSet.has(r));
+        if (prev.currentUrl !== nextUrl || !sameMarkers || !sameRoles) {
+          session.pageState = {
+            currentUrl: nextUrl,
+            matchedMarkers: nextMarkers,
+            userRoles: nextRoles,
+          };
           registry.notifyCatalogChanged(userId);
         }
         break;

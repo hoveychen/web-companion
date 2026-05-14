@@ -89,6 +89,21 @@ console.log('# summarizePages');
     p3.currentFlows.join(',') === 'checkout,nav,search',
     `cart+search flows (got: ${p3.currentFlows.join(',')})`,
   );
+
+  // v0.5 userRoles passthrough
+  expect(
+    Array.isArray(p3.userRoles) && p3.userRoles.length === 0,
+    'userRoles defaults to [] when pageState omits it (anonymous)',
+  );
+  const pWithRoles = summarizePages(tools, resources, {
+    currentUrl: '/admin',
+    matchedMarkers: [],
+    userRoles: ['staff', 'admin'],
+  });
+  expect(
+    pWithRoles.userRoles.join(',') === 'admin,staff',
+    `userRoles sorted+forwarded (got: ${pWithRoles.userRoles.join(',')})`,
+  );
 }
 
 console.log('# summarizeFlows');

@@ -85,6 +85,12 @@ send({
       description: 'always available',
       steps: [{ type: 'click', target: '[data-ai="z"]' }],
     },
+    {
+      name: 'admin.delete_user',
+      description: 'role-gated admin action',
+      where: { roles: ['admin'] },
+      steps: [{ type: 'click', target: '[data-ai="w"]' }],
+    },
   ],
 });
 
@@ -109,8 +115,8 @@ console.log('# Phase 1: no page/changed yet — only `where`-less tools pass');
   );
   const allScope = bridge.listAllTools('all').map((e) => e.tool.name).sort();
   expect(
-    allScope.length === 3,
-    `all scope returns 3 tools (got: ${allScope.length})`,
+    allScope.length === 4,
+    `all scope returns 4 tools (got: ${allScope.length})`,
   );
 }
 
@@ -161,6 +167,48 @@ console.log(
   `# Phase 5: catalogEvents fired at least 3 times (tools/list + 2 real page changes)`,
 );
 expect(catalogEvents.length >= 3, `catalogEvents count (${catalogEvents.length})`);
+
+console.log(
+  '# Phase 6: userRoles=[admin] — admin.delete_user appears in page scope',
+);
+send({
+  type: 'page/changed',
+  currentUrl: '/cart',
+  matchedMarkers: ["[data-view='search']"],
+  userRoles: ['admin'],
+});
+await wait(80);
+{
+  const pageScope = bridge.listAllTools('page').map((e) => e.tool.name).sort();
+  expect(
+    pageScope.join(',') ===
+      'admin.delete_user,checkout.submit,global.ping,search.run',
+    `admin role unlocks admin.delete_user (got: ${pageScope.join(',')})`,
+  );
+}
+
+console.log(
+  '# Phase 7: userRoles=[customer] — admin.delete_user filtered out again',
+);
+send({
+  type: 'page/changed',
+  currentUrl: '/cart',
+  matchedMarkers: ["[data-view='search']"],
+  userRoles: ['customer'],
+});
+await wait(80);
+{
+  const pageScope = bridge.listAllTools('page').map((e) => e.tool.name).sort();
+  expect(
+    pageScope.join(',') === 'checkout.submit,global.ping,search.run',
+    `customer role hides admin.delete_user (got: ${pageScope.join(',')})`,
+  );
+  const allScope = bridge.listAllTools('all').map((e) => e.tool.name).sort();
+  expect(
+    allScope.length === 4,
+    `scope=all still returns all 4 tools regardless of role (got: ${allScope.length})`,
+  );
+}
 
 offCatalog();
 ws.close();

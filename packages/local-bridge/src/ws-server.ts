@@ -116,7 +116,11 @@ export class BridgeWsServer {
       toolCount: s.tools.length,
       resourceCount: s.resources.length,
       namespace: s.namespace,
-      pageState: { ...s.pageState, matchedMarkers: [...s.pageState.matchedMarkers] },
+      pageState: {
+        currentUrl: s.pageState.currentUrl,
+        matchedMarkers: [...s.pageState.matchedMarkers],
+        userRoles: [...(s.pageState.userRoles ?? [])],
+      },
     }));
   }
 
@@ -174,6 +178,7 @@ export class BridgeWsServer {
         pageState: {
           currentUrl: s.pageState.currentUrl,
           matchedMarkers: [...s.pageState.matchedMarkers],
+          userRoles: [...(s.pageState.userRoles ?? [])],
         },
       },
       tools: [...s.tools],
@@ -284,6 +289,11 @@ export class BridgeWsServer {
                   (m): m is string => typeof m === 'string',
                 )
               : [],
+            userRoles: Array.isArray(msg['userRoles'])
+              ? (msg['userRoles'] as unknown[]).filter(
+                  (r): r is string => typeof r === 'string',
+                )
+              : [],
           };
           if (!sameState(bound.pageState, next)) {
             bound.pageState = next;
@@ -382,7 +392,7 @@ export class BridgeWsServer {
       tools: [],
       resources: [],
       namespace,
-      pageState: { currentUrl: '', matchedMarkers: [] },
+      pageState: { currentUrl: '', matchedMarkers: [], userRoles: [] },
     };
 
     // Grace-period reconnect: existing session under same id keeps its slot,
@@ -492,5 +502,10 @@ function sameState(a: CapturedPageState, b: CapturedPageState): boolean {
   if (a.matchedMarkers.length !== b.matchedMarkers.length) return false;
   const aSet = new Set(a.matchedMarkers);
   for (const m of b.matchedMarkers) if (!aSet.has(m)) return false;
+  const aRoles = a.userRoles ?? [];
+  const bRoles = b.userRoles ?? [];
+  if (aRoles.length !== bRoles.length) return false;
+  const aRoleSet = new Set(aRoles);
+  for (const r of bRoles) if (!aRoleSet.has(r)) return false;
   return true;
 }
