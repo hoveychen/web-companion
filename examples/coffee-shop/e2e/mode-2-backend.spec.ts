@@ -207,6 +207,92 @@ test.describe('Coffee shop · mode 2 (reference-backend) end-to-end', () => {
     expect(searchTools.map((t) => t.name)).toEqual(['search.search']);
   });
 
+  test('v0.6 nested modules: cart.advanced surfaces with parent + depth, prefix tool query works', async ({
+    page,
+  }) => {
+    if (!mcpClient) throw new Error('mcpClient not initialized');
+
+    await page.goto('/');
+    for (let i = 0; i < 30; i++) {
+      const r = await fetch('http://127.0.0.1:3001/health');
+      const body = (await r.json()) as {
+        users: Array<{ userId: string; tools: number }>;
+      };
+      const alice = body.users.find((u) => u.userId === 'alice');
+      if (alice && alice.tools > 0) break;
+      await wait(100);
+    }
+
+    // tools/list should expose the deeper surface name
+    // `alice:cart.advanced.apply_coupon`.
+    const listNames = (await mcpClient.listTools()).tools.map((t) => t.name);
+    expect(listNames).toContain('alice:cart.advanced.apply_coupon');
+    expect(listNames).toContain('alice:cart.advanced.clear_all');
+
+    // companion_flows — cart still surfaces, AND cart.advanced surfaces
+    // with parent='cart' + depth=2.
+    const flowsRes = await mcpClient.callTool({
+      name: 'companion_flows',
+      arguments: {},
+    });
+    const flowsText =
+      (flowsRes.content as Array<{ type: string; text?: string }> | undefined)
+        ?.find((c) => c.type === 'text')?.text ?? '[]';
+    const flows = JSON.parse(flowsText) as Array<{
+      name: string;
+      parent?: string;
+      depth: number;
+      toolCount: number;
+    }>;
+    const cart = flows.find((f) => f.name === 'cart');
+    const cartAdvanced = flows.find((f) => f.name === 'cart.advanced');
+    expect(cart, 'cart flow present').toBeTruthy();
+    expect(cart!.depth).toBe(1);
+    expect(cart!.parent).toBeUndefined();
+    expect(cartAdvanced, 'cart.advanced flow present').toBeTruthy();
+    expect(cartAdvanced!.depth).toBe(2);
+    expect(cartAdvanced!.parent).toBe('cart');
+    expect(cartAdvanced!.toolCount).toBe(2);
+
+    // companion_tools(flow='cart') — prefix match returns BOTH direct cart
+    // tools AND the descendant cart.advanced.* tools (v0.6 prefix-match).
+    const toolsRes = await mcpClient.callTool({
+      name: 'companion_tools',
+      arguments: { flow: 'cart' },
+    });
+    const toolsText =
+      (toolsRes.content as Array<{ type: string; text?: string }> | undefined)
+        ?.find((c) => c.type === 'text')?.text ?? '[]';
+    const cartTools = (JSON.parse(toolsText) as Array<{ name: string }>)
+      .map((t) => t.name)
+      .sort();
+    expect(cartTools).toEqual(
+      expect.arrayContaining([
+        'cart.add_to_cart',
+        'cart.checkout',
+        'cart.remove_from_cart',
+        'cart.advanced.apply_coupon',
+        'cart.advanced.clear_all',
+      ]),
+    );
+
+    // companion_tools(flow='cart.advanced') — narrows to the nested flow.
+    const advRes = await mcpClient.callTool({
+      name: 'companion_tools',
+      arguments: { flow: 'cart.advanced' },
+    });
+    const advText =
+      (advRes.content as Array<{ type: string; text?: string }> | undefined)
+        ?.find((c) => c.type === 'text')?.text ?? '[]';
+    const advTools = (JSON.parse(advText) as Array<{ name: string }>)
+      .map((t) => t.name)
+      .sort();
+    expect(advTools).toEqual([
+      'cart.advanced.apply_coupon',
+      'cart.advanced.clear_all',
+    ]);
+  });
+
   test('v0.5 auth filter: switching role toggles admin.* visibility in tools/list', async ({
     page,
   }) => {

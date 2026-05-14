@@ -1,5 +1,12 @@
 {
   "version": "0.2",
+  "modules": [
+    {
+      "name": "advanced",
+      "url": "./cart/advanced.json",
+      "description": "v0.6 嵌套 demo：购物车下的优惠 / 清空 stub flow。surface 名形如 cart.advanced.apply_coupon。"
+    }
+  ],
   "tools": [
     {
       "name": "add_to_cart",

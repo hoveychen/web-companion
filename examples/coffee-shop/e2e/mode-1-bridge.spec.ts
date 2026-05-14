@@ -202,10 +202,15 @@ test.describe('Coffee shop · mode 1 (local-bridge) end-to-end', () => {
         ?.find((c) => c.type === 'text')?.text ?? '[]';
     const cartTools = JSON.parse(toolsText) as Array<{ name: string }>;
     const cartToolNames = cartTools.map((t) => t.name).sort();
-    expect(cartToolNames).toEqual([
-      'cart.add_to_cart',
-      'cart.checkout',
-      'cart.remove_from_cart',
-    ]);
+    // v0.6: flow='cart' is a prefix-match → returns direct cart tools
+    // AND descendants like cart.advanced.* under a v0.6 nested module.
+    // Use arrayContaining to stay forward-compatible.
+    expect(cartToolNames).toEqual(
+      expect.arrayContaining([
+        'cart.add_to_cart',
+        'cart.checkout',
+        'cart.remove_from_cart',
+      ]),
+    );
   });
 });

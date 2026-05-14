@@ -40,6 +40,12 @@ export function App() {
   const [userRole, setUserRole] = useState<Role>('anonymous');
   const [adminLog, setAdminLog] = useState<string[]>([]);
 
+  // v0.6 nested-modules demo state: a sub-flow under `cart` for coupon /
+  // clear-all stubs. Surface names land at `cart.advanced.apply_coupon`
+  // etc.; FlowSummary exposes `parent='cart'` + `depth=2`.
+  const [cartCoupon, setCartCoupon] = useState('');
+  const [appliedCoupons, setAppliedCoupons] = useState<string[]>([]);
+
   useEffect(() => {
     if (typeof document === 'undefined' || !document.body) return;
     if (userRole === 'anonymous') {
@@ -243,6 +249,62 @@ export function App() {
               </button>
             </>
           )}
+          {/* v0.6 nested-modules demo — cart.advanced sub-flow. Surface
+              names land at cart.advanced.apply_coupon / .clear_all. */}
+          <div style={advancedSectionStyle} data-ai="cart-advanced">
+            <div style={{ fontSize: 12, opacity: 0.55, marginBottom: 6 }}>
+              cart.advanced (v0.6 嵌套 stub)
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                type="text"
+                value={cartCoupon}
+                onChange={(e) => setCartCoupon(e.target.value)}
+                data-ai="cart-coupon-input"
+                placeholder="优惠码"
+                style={advancedInputStyle}
+              />
+              <button
+                type="button"
+                data-ai-tool="cart-apply-coupon"
+                onClick={() => {
+                  const code = cartCoupon.trim();
+                  if (!code) return;
+                  setAppliedCoupons((prev) =>
+                    prev.includes(code) ? prev : [...prev, code],
+                  );
+                  setCartCoupon('');
+                }}
+                style={advancedBtnStyle}
+              >
+                应用
+              </button>
+              <button
+                type="button"
+                data-ai-tool="cart-clear-all"
+                onClick={() => {
+                  for (const it of items) cartStore.remove(it.id);
+                  setAppliedCoupons([]);
+                }}
+                style={advancedBtnStyle}
+              >
+                清空
+              </button>
+            </div>
+            {appliedCoupons.length > 0 && (
+              <ul style={{ ...cartListStyle, marginTop: 6 }}>
+                {appliedCoupons.map((code, i) => (
+                  <li
+                    key={`${code}-${i}`}
+                    data-ai="cart-coupon-applied"
+                    style={{ fontSize: 12, padding: '2px 0' }}
+                  >
+                    {code}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </aside>
       </main>
 
@@ -685,6 +747,29 @@ const stubBtnStyle: CSSProperties = {
   borderRadius: 6,
   padding: '6px 10px',
   fontSize: 13,
+  cursor: 'pointer',
+};
+const advancedSectionStyle: CSSProperties = {
+  marginTop: 12,
+  paddingTop: 10,
+  borderTop: '1px dashed rgba(0,0,0,0.12)',
+};
+const advancedInputStyle: CSSProperties = {
+  flex: 1,
+  border: '1px solid rgba(0,0,0,0.12)',
+  borderRadius: 6,
+  padding: '4px 8px',
+  fontSize: 12,
+  fontFamily: 'inherit',
+  outline: 'none',
+};
+const advancedBtnStyle: CSSProperties = {
+  background: 'rgba(99,102,241,0.85)',
+  color: 'white',
+  border: 'none',
+  borderRadius: 6,
+  padding: '4px 10px',
+  fontSize: 12,
   cursor: 'pointer',
 };
 const checkoutBtn: CSSProperties = {

@@ -1,0 +1,52 @@
+{
+  "version": "0.2",
+  "tools": [
+    {
+      "name": "apply_coupon",
+      "description": "演示用 (v0.6 嵌套 demo)：把优惠码应用到购物车（stub — 仅在 advanced 面板的 input 里填值 + 点 \"应用\" 按钮）。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "优惠码"
+          }
+        },
+        "required": ["code"]
+      },
+      "steps": [
+        { "type": "fill",  "target": "[data-ai='cart-coupon-input']", "value": "{code}" },
+        { "type": "click", "target": "[data-ai-tool='cart-apply-coupon']" }
+      ]
+    },
+    {
+      "name": "clear_all",
+      "description": "演示用 (v0.6 嵌套 demo)：清空购物车（stub — 点 advanced 面板的清空按钮）。",
+      "steps": [
+        { "type": "click", "target": "[data-ai-tool='cart-clear-all']" }
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "name": "coupons",
+      "description": "演示用 (v0.6 嵌套 demo)：当前已应用的优惠码列表。",
+      "schema": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "code": { "type": "string" }
+          }
+        }
+      },
+      "extract": {
+        "type": "list",
+        "selector": "[data-ai='cart-coupon-applied']",
+        "fields": {
+          "code": { "from": "text" }
+        }
+      }
+    }
+  ]
+}
