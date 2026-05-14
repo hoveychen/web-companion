@@ -289,8 +289,10 @@ dashboard with 100+ flows isn't — token bloat, name collisions, and an
 agent that can't tell which tools are usable from the current page.
 
 v0.4 introduces three mechanisms (modules / namespacing /
-server-side filter) and v0.5 adds an identity axis (`where.roles`).
-All are opt-in additions inside `version: "0.2"` — no spec bump.
+server-side filter), v0.5 adds an identity axis (`where.roles`),
+and v0.6 adds a hierarchy axis (nested modules with N-level
+`flow.subflow.tool` names). All are opt-in additions inside
+`version: "0.2"` — no spec bump.
 
 ### 1. Modules — split the catalog across files
 
@@ -384,6 +386,51 @@ still does RBAC"), lives in
 [`docs/v0.5-auth-aware-filter.md`](docs/v0.5-auth-aware-filter.md).
 
 [v0.5]: docs/v0.5-auth-aware-filter.md
+
+### 5. Nested modules (v0.6)
+
+The v0.4 hierarchy was one level deep — `flow.tool`. v0.6 lifts the
+loader's `nested modules forbidden` guard and lets a module file
+declare its own `modules: []` array, recursing up to a configurable
+depth (default `maxDepth: 3`). Surface names compose by joining
+every level with `.`:
+
+```jsonc
+// public/.well-known/companion/cart.json — parent module
+{
+  "version": "0.2",
+  "modules": [
+    { "name": "advanced", "url": "./cart/advanced.json" }
+  ],
+  "tools": [
+    { "name": "add_to_cart", "description": "...",
+      "steps": [{ "type": "click", "target": "[data-ai-tool='add-cart-{id}']" }] }
+  ]
+}
+```
+
+```jsonc
+// public/.well-known/companion/cart/advanced.json — nested leaf
+{
+  "version": "0.2",
+  "tools": [
+    { "name": "apply_coupon", "description": "...",
+      "steps": [ ... ] }
+  ]
+}
+```
+
+The catalog now exposes both `cart.add_to_cart` (inline) and
+`cart.advanced.apply_coupon` (nested), with `where:` cascaded
+through every level. `companion_flows` entries gain a `parent?:
+string` and `depth: number` so renderers can build a tree; the
+default `companion_tools(flow=)` query is a prefix match
+(`flow='cart'` returns both direct and descendant tools).
+
+When to nest: catalogs past ~50 top-level modules, with a natural
+domain split, sharing lifecycle. The annotator playbook's *Nested
+modules* section in Step 4 has the full rubric. Full RFC:
+[`docs/v0.6-nested-modules.md`](docs/v0.6-nested-modules.md).
 
 ---
 
@@ -677,6 +724,32 @@ filter on it). See [`docs/v0.5-auth-aware-filter.md`](docs/v0.5-auth-aware-filte
 for the full security disclosure — the filter is ergonomics, not an
 authorization gate.
 
+### Adding v0.6 nesting (still v0.2)
+
+No version bump. Move a group of related modules into a sub-directory
+and reference them via a parent module's `modules: []` array:
+
+```
+public/.well-known/
+├── companion.json              # index — still flat refs at the top
+├── companion/
+│   ├── ecommerce.json          # parent — only `modules: [...]`
+│   ├── ecommerce/
+│   │   ├── cart.json
+│   │   ├── checkout.json
+│   │   └── browse.json
+│   └── support.json
+```
+
+Surface names automatically become `ecommerce.cart.add_to_cart`,
+`ecommerce.checkout.submit`, etc. — agents that hardcoded the older
+flat names (`cart.add_to_cart`) need to be updated. The loader caps
+at `maxDepth: 3` by default; pass `loadCompanionSpec(url, { maxDepth: 4 })`
+for deeper trees, but `>=4` is almost always a sign the catalog
+should be flattened. v0.5 SDKs loading a v0.6 nested spec fail loud
+via `onModuleError` ("nested modules forbidden"), so the breakage
+is visible rather than silent.
+
 ---
 
 ## Packages
@@ -684,13 +757,13 @@ authorization gate.
 ```
 packages/
   spec/          @web-companion/spec          Zod schema (v0.1 + v0.2 incl. v0.5 where.roles) + TS types + parser/validator + companion.schema.json
-  sdk/           @web-companion/sdk           Runtime: registry, recursive-modules loader (mergeWhere), dsl-executor, dom-extractor, cursor, where-check (roles), ws-client (userRoles), PageStateTracker (4-level role fallback), meta-tools helpers
+  sdk/           @web-companion/sdk           Runtime: registry, recursive-modules loader (mergeWhere + v0.6 N-level nesting + maxDepth), dsl-executor, dom-extractor, cursor, where-check (roles), ws-client (userRoles), PageStateTracker (4-level role fallback), meta-tools helpers (v0.6 parent/depth + prefix-match)
   sidecar/       @web-companion/sidecar       Headless connector for mode 2 — React/Vue/Vanilla entries
   local-bridge/  @web-companion/local-bridge  Mode 1 — stdio MCP ↔ ws bridge; origin allowlist; navigation grace; server-side filter (url+marker+roles) + meta tools
   webmcp/        @web-companion/webmcp        W3C WebMCP adapter — `navigator.modelContext.registerTool` from a CompanionSpec
   annotator/     @web-companion/annotator     LLM-backed source → spec+marker suggestions; Claude Opus 4.7
 examples/
-  coffee-shop/                                vite 6 + react 19 end-to-end demo (v0.2 spec, 5 modules, 13 tools / 6 resources incl. v0.5 admin flow). Three Playwright suites: default (8), mode-1 bridge (2), mode-2 backend (4).
+  coffee-shop/                                vite 6 + react 19 end-to-end demo (v0.2 spec, 5 modules + 1 nested cart.advanced sub-flow = 15 tools / 7 resources incl. v0.5 admin + v0.6 cart.advanced). Three Playwright suites: default (8), mode-1 bridge (2), mode-2 backend (5).
   reference-backend/                          Skeleton remote agent backend for mode 2: ws + JWT + MCP Streamable HTTP + v0.4/v0.5 filter / meta tools; agent-less by design.
   with-sidebar/                               Demo: in-page chat sidebar (the old @web-companion/react package, repositioned in v0.3 — see its NOTE.md).
 ```
@@ -701,7 +774,7 @@ exercising the demo.
 
 ---
 
-## Status (v0.5)
+## Status (v0.6)
 
 | | |
 | --- | --- |
@@ -719,9 +792,12 @@ exercising the demo.
 | SDK `PageStateTracker` + `page/changed` wire push | ✅ |
 | Server-side `where:` filter + `notifications/tools/list_changed` | ✅ |
 | `companion_pages` / `companion_flows` / `companion_tools` meta tools | ✅ |
-| **v0.5 auth-aware filter — `where.roles[]` + `PageState.userRoles[]` + 4-source DOM fallback** | ✅ |
-| **Playbook *Auth-aware tools* section + coffee-shop `admin` worked example** | ✅ |
-| Playwright e2e (default 8/8 + mode-1 bridge 2/2 + mode-2 backend 4/4) | ✅ |
+| v0.5 auth-aware filter — `where.roles[]` + `PageState.userRoles[]` + 4-source DOM fallback | ✅ |
+| Playbook *Auth-aware tools* section + coffee-shop `admin` worked example | ✅ |
+| **v0.6 nested modules — N-level `flow.subflow.tool` + `LoaderOptions.maxDepth` (default 3)** | ✅ |
+| **`companion_flows[].parent` + `.depth` + `companion_tools(flow=)` prefix match** | ✅ |
+| **Playbook *Nested modules* section + coffee-shop `cart.advanced` worked example** | ✅ |
+| Playwright e2e (default 8/8 + mode-1 bridge 2/2 + mode-2 backend 5/5) | ✅ |
 | `@web-companion/sidecar` for Svelte / SolidJS | planned |
 
 ---

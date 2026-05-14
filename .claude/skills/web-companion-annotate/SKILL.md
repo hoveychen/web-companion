@@ -28,6 +28,11 @@ Before writing anything, read these files in this order:
    security disclosure (the filter is *ergonomics*, not an
    authorization boundary). Only consult this when the project has
    role-gated UI; for public-only apps the playbook section is enough.
+4. **`docs/v0.6-nested-modules.md`** — RFC covering N-level
+   module nesting (`ecommerce.checkout.submit`), `LoaderOptions.maxDepth`,
+   and the `companion_flows[].parent` / `.depth` surface. Only
+   consult this when the catalog has more than ~50 top-level
+   modules; for smaller apps stay flat and skip this read.
 
 If `docs/annotator-playbook.md` isn't present in the current
 workspace, the user probably cloned a downstream of web-companion

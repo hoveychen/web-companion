@@ -192,6 +192,66 @@ For each flow:
   available on every page. If they're only on some, give them their
   own module with `where`.
 
+#### Nested modules (v0.6) — when to reach for hierarchy
+
+By default keep the catalog one level deep. A flat list of 10–50
+modules is readable, easy to grep, and matches what the v0.4 design
+optimized for. Only nest when *all three* are true:
+
+1. **Catalog is past ~50 top-level modules.** Below that, the flat
+   list still scans fine.
+2. **There's a natural domain split.** AWS console buckets services
+   into Compute / Storage / Network; Shopify admin buckets into
+   Orders / Customers / Products / Analytics. If you can't name the
+   groups in 2–3 words each, nesting is premature.
+3. **Sub-flows share lifecycle.** All tools under `ecommerce.*` toggle
+   on/off together (e.g. the user is on `/admin/shop/**`). If three
+   sub-flows live on completely unrelated pages, they're not really
+   one parent flow; keep them flat.
+
+Layout for a nested catalog:
+
+```
+public/.well-known/
+├── companion.json                       # index — top-level modules
+├── companion/
+│   ├── ecommerce.json                   # parent module — only modules[]
+│   ├── ecommerce/
+│   │   ├── cart.json                    # nested leaf — tools + resources
+│   │   ├── checkout.json
+│   │   └── browse.json
+│   └── support.json
+```
+
+`companion/ecommerce.json` itself contains a `modules: [...]` field
+pointing at the three leaves; tools can live in the leaf files or
+inline alongside. Surface names compose as
+`ecommerce.cart.add_to_cart`, `ecommerce.checkout.submit`, etc.
+
+**Depth cap**: the loader defaults to `maxDepth: 3` (so paths up to
+`a.b.c.tool` work; `a.b.c.d` requires the integrator to opt into
+`maxDepth: 4`). Treat `>= depth 4` as a smell — almost always a sign
+you should flatten one level.
+
+**Pitfalls**:
+
+- *Don't nest just to feel organized.* If `cart.json` and
+  `checkout.json` are siblings at the top level and there's no other
+  shared parent, they don't need an `ecommerce` wrapper.
+- *Surface names get long.* `ecommerce.checkout.payment.submit` is
+  on the edge of readable. If it's that deep, shorten the
+  intermediate segments (`shop.pay.submit`) or flatten.
+- *Hardcoded tool names break.* An agent that hardcodes
+  `cart.add_to_cart` won't see `ecommerce.cart.add_to_cart` after a
+  refactor. Announce the namespace move in your changelog the same
+  way you would any rename.
+
+Worked example: coffee-shop's `cart` flow has a v0.6
+`cart.advanced` sub-flow with two stub tools (`apply_coupon`,
+`clear_all`). See `examples/coffee-shop/public/.well-known/companion/cart.json`
++ `cart/advanced.json` for the layout; the rendered surface names are
+`cart.add_to_cart`, `cart.advanced.apply_coupon`, etc.
+
 ### Step 5 — apply marker additions to source
 
 This is the only step that **mutates source code**. The mutations are
@@ -420,6 +480,7 @@ test (`mode-2-backend.spec.ts`) that toggles role and confirms
 | Input value should be set by AI | `fill` step; remember React-controlled inputs need the native setter (the SDK handles that) |
 | Async results need to mount before next step | `wait_for` step after the trigger |
 | Tool only valid for some user roles | `where.roles: [...]` on the tool — or hoist to the `ModuleRef` if the whole flow is gated. See *Auth-aware tools* |
+| Catalog has > ~50 top-level modules | Group into parent modules (`ecommerce.cart.*`, `support.tickets.*`) via v0.6 nested modules. See *Nested modules* in Step 4 |
 
 ## Common anti-patterns to refuse
 
