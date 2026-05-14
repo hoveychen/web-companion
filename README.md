@@ -387,6 +387,123 @@ still does RBAC"), lives in
 
 ---
 
+## Agent lifecycle — how to consume the catalog
+
+This section is for agent authors, not site integrators. It answers
+"my agent connected to a web-companion-instrumented site — what should
+its first five calls be?". It also untangles two readings of "CLI"
+that confuse the push-vs-poll question.
+
+### Long-lived agent vs one-shot CLI
+
+Most agents people write for this protocol fall into one of two
+shapes:
+
+- **Long-lived agent — IDE / desktop / continuous loop.** Claude Code,
+  Cursor, Claw, a daemon-style headless agent — these run as a
+  long-lived process, spawn (or hold open) an MCP transport, and
+  process user prompts one after another. From inside the user's
+  terminal they *look* like a CLI, but the process never exits between
+  turns. Push notifications matter here.
+- **One-shot CLI — `gh`-style imperative.** A script like
+  `webcompanion-tool-call shop add_to_cart --id mocha` that starts,
+  fires a single tool call, and exits. Lifetime shorter than a
+  page-state diff. Push doesn't help — the CLI is gone before any
+  notification could arrive.
+
+The protocol works for both, but the recommended invocation sequence
+and the "do I need to listen for notifications" answer differ. Pick
+the shape that matches what you're writing and follow that recipe.
+
+### Recommended startup sequence
+
+Long-lived or one-shot, the first round-trip is the same:
+
+1. **`initialize`** — the MCP SDK does this for you; you get back
+   `capabilities.tools.listChanged: true` from both
+   `@web-companion/local-bridge` and `examples/reference-backend`. (If
+   you need server-driven notifications, this is your gate — log a
+   warning if it's `false`.)
+2. **`tools/call companion_pages`** — `{ currentUrl,
+   matchedMarkers, currentFlows, userRoles }`. Now you know where the
+   user is and what identity context applies. One round-trip, no need
+   to scrape the page yourself.
+3. **`tools/call companion_flows`** *(optional)* — full flow inventory
+   with `active` booleans. Use this when the user asked something
+   open-ended ("what can you do here?") and you want to enumerate
+   capabilities without pulling the full tool catalog.
+4. **`tools/list`** *(or `companion_tools(flow="...")`)* — the
+   page-filtered tool catalog. Default scope is "tools whose `where:`
+   passes the current page state + user roles". Pass
+   `_meta: { scope: "all" }` only when you genuinely need the
+   unfiltered site map (debugging, agent diagnostics).
+5. **`tools/call <name>`** — pick a tool, invoke it. The SDK runs the
+   DSL steps against real DOM; you get a JSON result back.
+
+That's the whole baseline contract. Everything else is optimization.
+
+### Push vs on-demand — when each matters
+
+The "do I need to listen for `notifications/tools/list_changed`"
+question only has interesting answers if your process outlives a
+single user-page-state diff (~150ms typical). For each scenario:
+
+| Scenario | Listen for push? |
+| --- | --- |
+| Long-lived IDE agent following a user across navigations | **Yes** — without it you'll keep stale tool lists across page changes |
+| Long-lived agent in a single-page mode (user doesn't navigate) | Optional — page can still mutate (modals, role toggles, async loads); listening is cheap insurance |
+| One-shot CLI that fires one tool then exits | **No** — the catalog can only change between your queries if you wait between them, and you don't |
+| Multi-step CLI ("add to cart, then check out") that waits for async UI | **Yes for the wait** — between the `add_to_cart` invocation and the next step, the cart panel may mount and bring `checkout` into scope. This is exactly what `wait_for` steps + push together solve |
+
+Polling `tools/list` every N seconds is **not** part of any
+recommended recipe — the protocol already gives you on-demand fresh
+state at every meta tool / `tools/list` call, and a server-pushed
+delta when you keep the transport open. Polling would just waste
+round-trips.
+
+### Push mechanics, in one breath
+
+Stdio transport (mode 1): the bridge is a child process of the agent.
+Both sides write JSON-RPC messages to the pipe at any time. When
+`server.sendToolListChanged()` fires, the bridge writes
+`{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}` to
+stdout; the agent's MCP client reads it via stdin and calls the
+notification handler.
+
+Streamable HTTP transport (mode 2): the client opens `/mcp` with
+`Accept: text/event-stream`; the server keeps that response open as
+an SSE stream. Server-initiated messages get framed as
+`event: message\ndata: <JSON-RPC>\n\n`. Same notification, different
+wire.
+
+Both transports require the server to declare
+`capabilities.tools.listChanged: true` at `initialize` time — both
+web-companion surfaces do, so the agent can safely subscribe. Push
+isn't a web-companion invention; it's bog-standard MCP. See the
+linked transport docs in
+[`docs/v0.4-spec-at-scale.md`](docs/v0.4-spec-at-scale.md) if you
+want the wire-level detail.
+
+### Concrete one-shot CLI recipe
+
+If you're writing a "run once, exit" script and just need the
+filtered tool catalog at a moment in time, the whole flow is six
+lines of pseudocode:
+
+```ts
+const transport = new StreamableHTTPClientTransport(url, { headers });
+const client = new Client({ name: 'demo', version: '0' });
+await client.connect(transport);
+const pages = await client.callTool({ name: 'companion_pages', arguments: {} });
+const tools = await client.listTools();  // already filtered
+await client.callTool({ name: '<flow>.<tool>', arguments: { ... } });
+```
+
+No notification listener. No polling. The server-side filter does the
+work each time you ask.
+
+---
+
 ## Adapting an existing app
 
 The protocol is designed so an AI annotator — even one with limited
