@@ -1,0 +1,25 @@
+{
+  "name": "@web-companion/cli",
+  "version": "0.1.0-pre",
+  "description": "Companion CLI — speaks Streamable HTTP MCP to a web-companion backend (reference-backend or any spec-compliant MCP host) so you can list and invoke tools from a terminal.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "companion": "./dist/bin/companion.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.7.0"
+  }
+}

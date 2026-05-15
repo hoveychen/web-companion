@@ -1,0 +1,26 @@
+{
+  "version": "0.2",
+  "tools": [
+    {
+      "name": "toggle_notifications",
+      "description": "翻转抽屉里的通知 checkbox（不接参数 —— 每次调用切换一次）。",
+      "steps": [
+        { "type": "check", "target": "[data-ai='toggle-notifications']" }
+      ]
+    },
+    {
+      "name": "set_api_key",
+      "description": "在抽屉里设 API key（仅抽屉打开时该工具激活，演示嵌套模块 + 抽屉门控）。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "value": { "type": "string", "description": "新 api key" }
+        },
+        "required": ["value"]
+      },
+      "steps": [
+        { "type": "fill", "target": "[data-ai='set-api-key']", "value": "{value}" }
+      ]
+    }
+  ]
+}

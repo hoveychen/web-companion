@@ -30,6 +30,12 @@
       "url": "./companion/admin.json",
       "description": "管理后台 (stub)。仅 user-roles 含 'admin' 时 agent 可见 — v0.5 auth-aware filter 演示。",
       "where": { "marker": "[data-ai-view='admin']", "roles": ["admin"] }
+    },
+    {
+      "name": "settings",
+      "url": "./companion/settings.json",
+      "description": "跨页 demo · settings.html 上的 8 类复杂控件（input/password/dropdown/radio/textarea/color/date/drawer）。",
+      "where": { "marker": "[data-ai-view='settings']" }
     }
   ]
 }

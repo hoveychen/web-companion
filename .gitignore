@@ -11,3 +11,4 @@ TASKS.md
 test-results/
 playwright-report/
 .tmp/
+scripts/ui-shots/

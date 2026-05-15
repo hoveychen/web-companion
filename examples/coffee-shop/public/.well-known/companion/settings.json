@@ -1,0 +1,198 @@
+{
+  "version": "0.2",
+  "modules": [
+    {
+      "name": "drawer",
+      "url": "./settings/drawer.json",
+      "description": "抽屉内独占的工具（开抽屉后才激活）—— notifications 切换 + api key 输入。",
+      "where": { "marker": "[data-ai-view='drawer'][data-open='true']" }
+    }
+  ],
+  "tools": [
+    {
+      "name": "set_nickname",
+      "description": "把 settings 页的『昵称』input 设为给定值。演示 text-input 类控件。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "value": { "type": "string", "description": "新昵称" }
+        },
+        "required": ["value"]
+      },
+      "steps": [
+        { "type": "fill", "target": "[data-ai='set-nickname']", "value": "{value}" }
+      ]
+    },
+    {
+      "name": "set_password",
+      "description": "把『密码』password 输入框设为给定值。注意：仅 demo，明文回显字符长度。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "value": { "type": "string", "description": "新密码" }
+        },
+        "required": ["value"]
+      },
+      "steps": [
+        { "type": "fill", "target": "[data-ai='set-password']", "value": "{value}" }
+      ]
+    },
+    {
+      "name": "select_country",
+      "description": "下拉选择国家。country 必须是 CN/US/JP/DE/BR 之一。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "country": {
+            "type": "string",
+            "description": "ISO 国家代码",
+            "enum": ["CN", "US", "JP", "DE", "BR"]
+          }
+        },
+        "required": ["country"]
+      },
+      "steps": [
+        { "type": "select", "target": "[data-ai='select-country']", "value": "{country}" }
+      ]
+    },
+    {
+      "name": "pick_theme",
+      "description": "在 radio 组里选主题。theme: light / dark / auto。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "theme": {
+            "type": "string",
+            "enum": ["light", "dark", "auto"]
+          }
+        },
+        "required": ["theme"]
+      },
+      "steps": [
+        { "type": "check", "target": "[data-ai='pick-theme-{theme}']", "checked": true }
+      ]
+    },
+    {
+      "name": "set_bio",
+      "description": "在 textarea 里写入多行自我介绍。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string", "description": "bio 全文" }
+        },
+        "required": ["text"]
+      },
+      "steps": [
+        { "type": "fill", "target": "[data-ai='set-bio']", "value": "{text}" }
+      ]
+    },
+    {
+      "name": "pick_accent_color",
+      "description": "在 color picker 上选主色。hex 形如 #5b6cff。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "hex": {
+            "type": "string",
+            "description": "十六进制颜色（含 # 前缀）"
+          }
+        },
+        "required": ["hex"]
+      },
+      "steps": [
+        { "type": "fill", "target": "[data-ai='pick-accent-color']", "value": "{hex}" }
+      ]
+    },
+    {
+      "name": "pick_reminder_date",
+      "description": "在 date picker 上选提醒日期。格式 YYYY-MM-DD。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "YYYY-MM-DD"
+          }
+        },
+        "required": ["date"]
+      },
+      "steps": [
+        { "type": "fill", "target": "[data-ai='pick-reminder-date']", "value": "{date}" }
+      ]
+    },
+    {
+      "name": "open_drawer",
+      "description": "打开『高级设置』抽屉。抽屉打开后 settings.drawer 模块才会激活。",
+      "steps": [
+        { "type": "click",    "target": "[data-ai-tool='open-drawer']" },
+        { "type": "wait_for", "target": "[data-ai-view='drawer'][data-open='true']", "timeoutMs": 2000 }
+      ]
+    },
+    {
+      "name": "close_drawer",
+      "description": "关闭抽屉。关闭后 drawer 模块工具会从 catalog 消失。",
+      "steps": [
+        { "type": "click", "target": "[data-ai-tool='close-drawer']" }
+      ]
+    },
+    {
+      "name": "save_profile",
+      "description": "点『保存所有设置』按钮，把当前所有控件值落到 saveLog。",
+      "steps": [
+        { "type": "click", "target": "[data-ai-tool='save-profile']" }
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "name": "profile",
+      "description": "settings 页当前的快照。可读：nickname / countryCode / theme / bio / passwordLength / accentColor / reminderDate。",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "nickname":       { "type": "string" },
+          "countryCode":    { "type": "string" },
+          "theme":          { "type": "string" },
+          "bio":            { "type": "string" },
+          "passwordLength": { "type": "string" },
+          "accentColor":    { "type": "string" },
+          "reminderDate":   { "type": "string" }
+        }
+      },
+      "extract": {
+        "type": "single",
+        "selector": "[data-ai-view='settings']",
+        "fields": {
+          "nickname":       { "from": "value",  "selector": "[data-ai='set-nickname']" },
+          "countryCode":    { "from": "value",  "selector": "[data-ai='select-country']" },
+          "bio":            { "from": "value",  "selector": "[data-ai='set-bio']" },
+          "passwordLength": { "from": "text",   "selector": "[data-ai='password-length']" },
+          "accentColor":    { "from": "text",   "selector": "[data-ai='accent-color-value']" },
+          "reminderDate":   { "from": "value",  "selector": "[data-ai='pick-reminder-date']" }
+        }
+      }
+    },
+    {
+      "name": "save_log",
+      "description": "最近的保存历史。每项含 time, payload。",
+      "schema": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "time":    { "type": "string" },
+            "payload": { "type": "string" }
+          }
+        }
+      },
+      "extract": {
+        "type": "list",
+        "selector": "[data-ai='save-log-entry']",
+        "fields": {
+          "time":    { "from": "text", "selector": "[data-ai='save-log-time']" },
+          "payload": { "from": "text", "selector": "[data-ai='save-log-payload']" }
+        }
+      }
+    }
+  ]
+}

@@ -8,7 +8,8 @@
     "build": "pnpm -r run build",
     "typecheck": "pnpm -r run typecheck",
     "dev": "pnpm -r --parallel run dev",
-    "clean": "pnpm -r exec rm -rf dist .turbo *.tsbuildinfo"
+    "clean": "pnpm -r exec rm -rf dist .turbo *.tsbuildinfo",
+    "demo:cross-page": "node scripts/demo-cross-page.mjs"
   },
   "engines": {
     "node": ">=20"
