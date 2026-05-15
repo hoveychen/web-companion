@@ -117,7 +117,8 @@ async function executeOneStep(step: Step, element: Element): Promise<void> {
           `check step expects a checkbox/radio <input>, got ${element.tagName.toLowerCase()}`,
         );
       }
-      element.checked = step.checked ?? !element.checked;
+      setNativeChecked(element, step.checked ?? !element.checked);
+      element.dispatchEvent(new Event('click', { bubbles: true }));
       element.dispatchEvent(new Event('change', { bubbles: true }));
       return;
     }
@@ -142,5 +143,25 @@ function setNativeValue(
     setter.call(element, value);
   } else {
     element.value = value;
+  }
+}
+
+/**
+ * Why: React (>=18) installs a per-instance `checked` setter on
+ * controlled radios/checkboxes to keep its internal valueTracker in sync.
+ * Direct `element.checked = x` goes through that wrapper but leaves the
+ * tracker in a state where, on the next re-render of any sibling field,
+ * React reconciles every radio in the group against its tracker and
+ * silently flips the previously-checked radio back to its initial
+ * `defaultChecked` value. Calling the prototype's original setter
+ * bypasses the wrapper so the tracker stays consistent.
+ */
+function setNativeChecked(element: HTMLInputElement, checked: boolean): void {
+  const proto = Object.getPrototypeOf(element);
+  const setter = Object.getOwnPropertyDescriptor(proto, 'checked')?.set;
+  if (setter) {
+    setter.call(element, checked);
+  } else {
+    element.checked = checked;
   }
 }

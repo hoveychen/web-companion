@@ -281,6 +281,25 @@ const themeChecked = await settingsIframe
 if (!themeChecked) fail('expected pick-theme-dark to be checked');
 ok('radio drove theme=dark via MCP');
 
+// 8b-regression — after picking a radio, mutating ANY other controlled
+// input (e.g. the country dropdown) must NOT reset the radio. This is a
+// React 18 controlled-radio + DSL desync bug discovered 2026-05-15:
+// directly setting `.checked = true` on a sibling radio bypasses React's
+// valueTracker; on the next commit driven by an unrelated field, React
+// flips the group back to its `defaultChecked`. Fix landed in
+// dsl-executor.ts (`setNativeChecked` via prototype setter).
+await callMcp('settings.select_country', 'select', 'US');
+const themeStillDark = await settingsIframe
+  .locator('[data-ai="pick-theme-dark"]').isChecked();
+const themeAuto = await settingsIframe
+  .locator('[data-ai="pick-theme-auto"]').isChecked();
+if (!themeStillDark || themeAuto) {
+  fail(
+    `REGRESSION: changing country reset the theme radio. dark=${themeStillDark} auto=${themeAuto}`,
+  );
+}
+ok('radio survives sibling controlled-input mutation (theme stays dark after country change)');
+
 // 8c. textarea — set_bio. ToolBrowser's heuristic should render this
 //      param (name="text", description mentions "多行") as a real
 //      <textarea> in the sidebar, so newlines survive.
